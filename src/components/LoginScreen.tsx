@@ -1,0 +1,544 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  ShieldCheck,
+  User,
+  Sparkles,
+  KeyRound,
+  School,
+  GraduationCap,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  Lock,
+  UserPlus,
+  LogIn,
+  Star,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
+import { GradeType, UserProfile, UserRole } from '../types';
+import { registerAccount, authenticateUser, getStoredAccounts, clearAllAccounts } from '../services/authService';
+import mascotImg from '../assets/images/puleo_dream_mascot_1787679912561.jpg';
+
+interface LoginScreenProps {
+  onLoginSuccess: (profile: UserProfile) => void;
+}
+
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
+  const [accountCount, setAccountCount] = useState<number>(() => getStoredAccounts().length);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>(() => {
+    return getStoredAccounts().length === 0 ? 'signup' : 'login';
+  });
+  const [selectedRole, setSelectedRole] = useState<UserRole>('student');
+
+  // Login form fields
+  const [loginId, setLoginId] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Sign up form fields
+  const [signupId, setSignupId] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState('');
+  const [signupNickname, setSignupNickname] = useState('');
+  const [signupSchool, setSignupSchool] = useState('대구화원고등학교');
+  const [signupGrade, setSignupGrade] = useState<GradeType>('high_1');
+  const [adminSecretKey, setAdminSecretKey] = useState('');
+
+  // Status feedback
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Clear messages when mode or role changes
+  const handleSwitchMode = (mode: 'login' | 'signup') => {
+    setAuthMode(mode);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  };
+
+  const handleSwitchRole = (role: UserRole) => {
+    setSelectedRole(role);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+  };
+
+  const handleResetAllAccounts = () => {
+    if (window.confirm('등록된 모든 회원 계정을 완전히 삭제하시겠습니까?')) {
+      clearAllAccounts();
+      setAccountCount(0);
+      setAuthMode('signup');
+      setSuccessMessage('모든 가입 계정이 성공적으로 삭제되었습니다.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
+
+  // Handle Login Submission
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    const result = authenticateUser(loginId, loginPassword, selectedRole);
+    if (!result.success || !result.userProfile) {
+      setErrorMessage(result.error || '로그인에 실패했습니다.');
+      return;
+    }
+
+    onLoginSuccess(result.userProfile);
+  };
+
+  // Handle Signup Submission
+  const handleSignupSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (signupPassword !== signupPasswordConfirm) {
+      setErrorMessage('비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+
+    const regResult = registerAccount({
+      loginId: signupId,
+      password: signupPassword,
+      role: selectedRole,
+      nickname: signupNickname,
+      schoolName: signupSchool,
+      grade: signupGrade,
+      adminSecretKey: selectedRole === 'admin' ? adminSecretKey : undefined,
+    });
+
+    if (!regResult.success) {
+      setErrorMessage(regResult.error || '회원가입에 실패했습니다.');
+      return;
+    }
+
+    // Signup successful! Auto-switch to login or auto-login
+    setSuccessMessage('🎉 회원가입이 완료되었습니다! 로그인 창으로 이동합니다.');
+    setTimeout(() => {
+      // Auto fill login credentials and log in
+      const autoAuth = authenticateUser(signupId, signupPassword, selectedRole);
+      if (autoAuth.success && autoAuth.userProfile) {
+        onLoginSuccess(autoAuth.userProfile);
+      } else {
+        setLoginId(signupId);
+        setLoginPassword(signupPassword);
+        setAuthMode('login');
+        setSuccessMessage(null);
+      }
+    }, 1200);
+  };
+
+  return (
+    <div
+      id="login-screen-container"
+      className="min-h-screen w-full flex flex-col items-center justify-center p-3 sm:p-6 select-none bg-[#F8F5EE] bg-[radial-gradient(#E8DFCA_1px,transparent_1px)] [background-size:24px_24px]"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="w-full max-w-md bg-[#FFFDF9] rounded-[32px] shadow-[0_16px_40px_rgba(245,158,11,0.15),0_4px_12px_rgba(0,0,0,0.05)] border-[3px] border-amber-200 overflow-hidden flex flex-col"
+      >
+        {/* Top 3D Clay Logo & Mascot Header */}
+        <div className="bg-gradient-to-b from-amber-400 via-amber-300 to-yellow-200/90 p-5 text-center relative overflow-hidden border-b-2 border-amber-200">
+          <div className="absolute top-2 left-3 text-amber-100 opacity-60">
+            <Star className="w-6 h-6 fill-amber-300 text-amber-300 animate-pulse" />
+          </div>
+          <div className="absolute top-3 right-4 text-amber-100 opacity-60">
+            <Sparkles className="w-5 h-5 text-amber-500" />
+          </div>
+
+          <div className="flex flex-col items-center -mb-2">
+            <span className="text-xl animate-bounce">🌱</span>
+            <svg width="56" height="28" viewBox="0 0 68 34" fill="none" className="drop-shadow-sm">
+              <path d="M34 4L6 28C4.5 29.5 5.5 32 7.5 32H60.5C62.5 32 63.5 29.5 62 28L34 4Z" fill="#1E40AF" />
+              <path d="M34 6L8 28H60L34 6Z" fill="#2563EB" />
+              <circle cx="34" cy="18" r="4" fill="#FEF08A" />
+            </svg>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 mt-0.5">
+            <h1
+              className="text-2xl sm:text-3xl font-extrabold tracking-wider"
+              style={{
+                color: '#2563EB',
+                fontFamily: "'Pretendard', sans-serif",
+                textShadow: '0 2px 0 #1D4ED8, 0 4px 10px rgba(37, 99, 235, 0.25)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              풀어
+            </h1>
+            <span
+              className="text-2xl sm:text-3xl font-black tracking-wider uppercase"
+              style={{
+                color: '#2563EB',
+                fontFamily: "'Fredoka', 'Pretendard', sans-serif",
+                textShadow: '0 2px 0 #1D4ED8, 0 4px 10px rgba(37, 99, 235, 0.25)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              DREAM
+            </span>
+          </div>
+          <p className="text-xs text-blue-900/90 font-bold mt-1">
+            수학 · 과학 교과서 맞춤 풀이 & 질문 도우미
+          </p>
+        </div>
+
+        {/* Mascot Mini Greeting Badge */}
+        <div className="px-5 py-3 flex items-center gap-3 bg-amber-50/50 border-b border-amber-100">
+          <div className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-amber-300 shadow-sm bg-white shrink-0">
+            <img src={mascotImg} alt="풀어드림 마스코트" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </div>
+          <div className="text-xs leading-snug text-slate-700 flex-1">
+            <span className="font-black text-amber-900 block">
+              {authMode === 'login' ? '🔑 아이디와 비밀번호로 로그인하세요' : '✨ 새로운 계정을 만들어보세요!'}
+            </span>
+            <span className="text-slate-500 font-medium text-[11px]">
+              {authMode === 'login'
+                ? '가입된 계정 정보를 입력하여 학습을 시작하세요.'
+                : '가입 후 교과서 맞춤 풀이와 질문을 이용할 수 있습니다.'}
+            </span>
+          </div>
+        </div>
+
+        {/* Login / Sign Up Main Switch Tabs */}
+        <div className="px-5 pt-3">
+          <div className="grid grid-cols-2 p-1 bg-amber-100/60 rounded-2xl border border-amber-200/80">
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('login')}
+              className={`py-2 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all ${
+                authMode === 'login'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-amber-800/70 hover:text-amber-900'
+              }`}
+            >
+              <LogIn className="w-4 h-4 text-blue-600" />
+              <span>로그인</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchMode('signup')}
+              className={`py-2 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all ${
+                authMode === 'signup'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-amber-800/70 hover:text-amber-900'
+              }`}
+            >
+              <UserPlus className="w-4 h-4 text-amber-600" />
+              <span>회원가입</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Role Selection Tabs (Student vs Admin) */}
+        <div className="px-5 pt-3">
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleSwitchRole('student')}
+              className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                selectedRole === 'student'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>학생 / 일반 회원</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchRole('admin')}
+              className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                selectedRole === 'admin'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-amber-500/20'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>선생님 / 관리자</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Forms Container */}
+        <div className="p-5 pt-3 space-y-3.5">
+          {/* Error / Success Feedback Alerts */}
+          {errorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold flex items-start gap-2 animate-shake">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+              <span className="leading-snug">{errorMessage}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          <AnimatePresence mode="wait">
+            {/* 1. LOGIN FORM */}
+            {authMode === 'login' ? (
+              <motion.form
+                key="login-form"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                onSubmit={handleLoginSubmit}
+                className="space-y-3"
+              >
+                {selectedRole === 'admin' && (
+                  <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="font-bold text-[11px]">
+                      등록된 관리자 전용 아이디로 로그인해주세요.
+                    </span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1 mb-1">
+                    <User className="w-3.5 h-3.5 text-slate-500" />
+                    <span>아이디 (ID)</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={loginId}
+                    onChange={(e) => setLoginId(e.target.value)}
+                    placeholder="가입한 아이디를 입력하세요"
+                    className="w-full px-3.5 py-2.5 bg-white rounded-2xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                      <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                      <span>비밀번호 (Password)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                    >
+                      {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showPassword ? '숨기기' : '보기'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="비밀번호를 입력하세요"
+                    className="w-full px-3.5 py-2.5 bg-white rounded-2xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className={`w-full py-3.5 px-4 text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all mt-3 ${
+                    selectedRole === 'admin'
+                      ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25'
+                  }`}
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>{selectedRole === 'admin' ? '관리자로 로그인하기' : '학생으로 로그인하기'}</span>
+                </button>
+
+                <div className="text-center pt-2">
+                  <span className="text-xs text-slate-500">아직 회원이 아니신가요? </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchMode('signup')}
+                    className="text-xs font-black text-blue-600 hover:underline"
+                  >
+                    지금 회원가입하기
+                  </button>
+                </div>
+              </motion.form>
+            ) : (
+              /* 2. SIGNUP FORM */
+              <motion.form
+                key="signup-form"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                onSubmit={handleSignupSubmit}
+                className="space-y-3"
+              >
+                {selectedRole === 'admin' && (
+                  <div className="p-3 bg-amber-50 rounded-2xl border border-amber-300 text-amber-900 text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 font-black text-amber-800">
+                      <Lock className="w-4 h-4 text-amber-600" />
+                      <span>관리자 회원가입 전용 보안 인증</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700">
+                      관리자 계정 가입은 허가된 선생님/관리자 전용 비밀 인증코드가 있어야만 가능합니다.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      아이디
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={signupId}
+                      onChange={(e) => setSignupId(e.target.value)}
+                      placeholder="3자 이상"
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      닉네임 / 성함
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={signupNickname}
+                      onChange={(e) => setSignupNickname(e.target.value)}
+                      placeholder={selectedRole === 'admin' ? '예: 박선생님' : '예: 열공이'}
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      비밀번호
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={signupPassword}
+                      onChange={(e) => setSignupPassword(e.target.value)}
+                      placeholder="4자 이상"
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      비밀번호 확인
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={signupPasswordConfirm}
+                      onChange={(e) => setSignupPasswordConfirm(e.target.value)}
+                      placeholder="동일하게 입력"
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    학교 / 소속
+                  </label>
+                  <input
+                    type="text"
+                    value={signupSchool}
+                    onChange={(e) => setSignupSchool(e.target.value)}
+                    placeholder="예: 대구화원고등학교"
+                    className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                </div>
+
+                {selectedRole === 'student' && (
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      학년
+                    </label>
+                    <select
+                      value={signupGrade}
+                      onChange={(e) => setSignupGrade(e.target.value as GradeType)}
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="middle_1">중학교 1학년</option>
+                      <option value="middle_2">중학교 2학년</option>
+                      <option value="middle_3">중학교 3학년</option>
+                      <option value="high_1">고등학교 1학년</option>
+                      <option value="high_2_3">고등학교 2·3학년</option>
+                    </select>
+                  </div>
+                )}
+
+                {selectedRole === 'admin' && (
+                  <div className="p-3 bg-amber-50/90 rounded-2xl border border-amber-300/90 space-y-1.5">
+                    <label className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                      <span>선생님 / 관리자 전용 비밀 인증코드</span>
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={adminSecretKey}
+                      onChange={(e) => setAdminSecretKey(e.target.value)}
+                      placeholder="발급받은 관리자 비밀 인증코드를 입력하세요"
+                      className="w-full px-3 py-2 bg-white rounded-xl border-2 border-amber-400 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-amber-800/80 font-medium">
+                      * 관리자 가입은 학교 관리자 또는 담당 교사에게 전달된 전용 보안 코드가 필요합니다.
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className={`w-full py-3.5 px-4 text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all mt-3 ${
+                    selectedRole === 'admin'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25'
+                  }`}
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>{selectedRole === 'admin' ? '관리자 계정 생성하기' : '학생 회원가입 완료하기'}</span>
+                </button>
+
+                <div className="text-center pt-2">
+                  <span className="text-xs text-slate-500">이미 계정이 있으신가요? </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchMode('login')}
+                    className="text-xs font-black text-blue-600 hover:underline"
+                  >
+                    로그인하기
+                  </button>
+                </div>
+              </motion.form>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 bg-amber-50/80 border-t border-amber-100 flex flex-col items-center gap-1 text-center">
+          <p className="text-[11px] text-slate-400 font-semibold">
+            풀어 DREAM · 우리 학교 수학·과학 학습 지원 시스템
+          </p>
+          <button
+            type="button"
+            onClick={handleResetAllAccounts}
+            className="text-[10px] text-slate-400 hover:text-rose-600 hover:underline transition-colors mt-0.5"
+          >
+            모든 가입 계정 데이터 초기화 (전체 삭제)
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
