@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ChevronRight, ShieldCheck, MessageSquare } from 'lucide-react';
+import { ChevronRight, ShieldCheck, MessageSquare } from 'lucide-react';
 import { PuleoDreamHeader } from './PuleoDreamHeader';
 import { UserRole } from '../types';
 import mascotImg from '../assets/images/puleo_dream_mascot_1787679912561.jpg';
@@ -8,7 +8,7 @@ import mascotImg from '../assets/images/puleo_dream_mascot_1787679912561.jpg';
 interface HomeScreenProps {
   onSelectMath: () => void;
   onSelectScience: () => void;
-  onSelectAskQuestion: () => void;
+  onSelectAskQuestion?: () => void;
   onSelectQnA: () => void;
   onOpenProfile: () => void;
   onLogout?: () => void;
@@ -100,38 +100,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </motion.button>
 
-        {/* BUTTON 3: 모르는 문제가 있어요! (사진 질문) */}
-        <motion.button
-          id="btn-ask-question"
-          onClick={onSelectAskQuestion}
-          whileHover={{ scale: 1.02, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          className="w-full py-3.5 px-4 sm:px-5 rounded-[26px] bg-gradient-to-r from-amber-50 to-orange-50 border-[3px] border-[#F59E0B] shadow-[0_8px_20px_rgba(245,158,11,0.22),0_2px_6px_rgba(0,0,0,0.04)] flex items-center justify-between group transition-all relative overflow-hidden"
-        >
-          {/* Subtle Clay Highlight Bar */}
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-yellow-300 to-orange-400" />
-
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center text-xl shadow-md border-2 border-white group-hover:rotate-6 transition-transform relative">
-              📸
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-ping" />
-            </div>
-            <div className="text-left">
-              <span className="text-[11px] font-bold text-amber-700 tracking-wide uppercase flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-500" /> 사진 찍고 AI 해결
-              </span>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                모르는 문제가 있어요!
-              </h2>
-            </div>
-          </div>
-
-          <div className="w-8 h-8 rounded-full bg-amber-200/80 text-amber-900 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors shadow-xs">
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-        </motion.button>
-
-        {/* BUTTON 4: 실시간 학생 Q&A 질문 & 선생님 답변 게시판 */}
+        {/* BUTTON 3: 실시간 학생 Q&A 질문 & 선생님 답변 게시판 */}
         <motion.button
           id="btn-community-qna"
           onClick={onSelectQnA}

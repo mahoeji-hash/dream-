@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, BookOpen, ChevronRight, Filter, Sparkles, PlusCircle, 
-  CheckCircle2, Bookmark, ArrowLeft, Trash2, ShieldCheck, Award, 
+  CheckCircle, CheckCircle2, Bookmark, ArrowLeft, Trash2, ShieldCheck, Award, 
   FileQuestion, Camera, Upload, Image as ImageIcon, Maximize2, X, 
   Lightbulb, Layers, ChevronDown, Check, PlayCircle, BookMarked, Compass,
   Clock
@@ -12,6 +12,22 @@ import { getStoredUnitQuizzes, saveStoredUnitQuizzes, UnitQuiz, QuizQuestion } f
 import { getCurriculumForSubject, ChapterGroup, SubUnitItem } from '../data/curriculumData';
 import { UnitTestModal } from './UnitTestModal';
 import { InterestingFactsGallery } from './InterestingFactsGallery';
+
+const CIRCLED_NUMBERS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+
+export interface BatchProblemDraft {
+  tempId: string;
+  problemNumber: string;
+  pageNumber: string;
+  difficulty: '쉬움' | '보통' | '도전' | '심화';
+  problemType: '중단원 마무리' | '대단원 평가' | '개념 예제' | '확인 문제' | '발전/심화 문제';
+  problemText: string;
+  step1: string;
+  step2: string;
+  finalAnswer: string;
+  dreamTip: string;
+  solutionImage?: string | null;
+}
 
 interface TextbookMasterViewProps {
   subject: SubjectType;
@@ -24,6 +40,7 @@ interface TextbookMasterViewProps {
   onSelectProblem: (problem: ProblemItem) => void;
   onGoBack: () => void;
   onAddNewProblem: (newProblem: ProblemItem) => void;
+  onAddNewProblems?: (newProblems: ProblemItem[]) => void;
   onDeleteProblem?: (problemId: string) => void;
   onAddNewFact?: (fact: InterestingFactItem) => void;
   onDeleteFact?: (factId: string) => void;
@@ -42,6 +59,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
   onSelectProblem,
   onGoBack,
   onAddNewProblem,
+  onAddNewProblems,
   onDeleteProblem,
   onAddNewFact,
   onDeleteFact,
@@ -77,10 +95,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
 
   // New Quiz Question Form Fields
   const [newQuizQuestionText, setNewQuizQuestionText] = useState('');
-  const [newQuizOpt1, setNewQuizOpt1] = useState('');
-  const [newQuizOpt2, setNewQuizOpt2] = useState('');
-  const [newQuizOpt3, setNewQuizOpt3] = useState('');
-  const [newQuizOpt4, setNewQuizOpt4] = useState('');
+  const [newQuizOptions, setNewQuizOptions] = useState<string[]>(['', '', '', '', '']); // Default to 5 options (5지선다)
   const [newQuizCorrectIdx, setNewQuizCorrectIdx] = useState(0);
   const [newQuizExplanation, setNewQuizExplanation] = useState('');
   const [newQuizHint, setNewQuizHint] = useState('');
@@ -90,15 +105,75 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
   const quizQuestionFileInputRef = useRef<HTMLInputElement>(null);
   const quizExplanationFileInputRef = useRef<HTMLInputElement>(null);
 
-  // New problem registration modal (Admin only)
+  // Dynamic Options Management for Quiz Creation
+  const handleAddOptionField = () => {
+    if (newQuizOptions.length >= 10) {
+      alert('보기(선지)는 최대 10개까지 추가할 수 있습니다.');
+      return;
+    }
+    setNewQuizOptions((prev) => [...prev, '']);
+  };
+
+  const handleRemoveOptionField = (indexToRemove: number) => {
+    if (newQuizOptions.length <= 2) {
+      alert('최소 2개 이상의 보기(선지)가 있어야 합니다.');
+      return;
+    }
+    setNewQuizOptions((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    if (newQuizCorrectIdx === indexToRemove) {
+      setNewQuizCorrectIdx(0);
+    } else if (newQuizCorrectIdx > indexToRemove) {
+      setNewQuizCorrectIdx((prev) => prev - 1);
+    }
+  };
+
+  const handleSetOptionCountPreset = (count: number) => {
+    if (count === 2) {
+      setNewQuizOptions(['O (참 / 옳음)', 'X (거짓 / 틀림)']);
+      setNewQuizCorrectIdx(0);
+    } else {
+      setNewQuizOptions((prev) => {
+        const next = [...prev];
+        if (next.length < count) {
+          while (next.length < count) next.push('');
+        } else {
+          next.length = count;
+        }
+        return next;
+      });
+      if (newQuizCorrectIdx >= count) {
+        setNewQuizCorrectIdx(0);
+      }
+    }
+  };
+
+  const handleUpdateOptionText = (index: number, text: string) => {
+    setNewQuizOptions((prev) => {
+      const next = [...prev];
+      next[index] = text;
+      return next;
+    });
+  };
+
+  // Problem registration modal (Admin only) - Single & Batch Modes
   const [showAddProblemModal, setShowAddProblemModal] = useState(false);
-  const [newChapterName, setNewChapterName] = useState(
-    subject === 'math' ? 'I. 도형의 방정식' : 'I. 변화와 다양성'
-  );
-  const [newUnitName, setNewUnitName] = useState(
-    subject === 'math' ? '1. 평면좌표와 직선의 방정식' : '1. 지구 환경 변화와 생물다양성'
-  );
+  const [addProblemModalMode, setAddProblemModalMode] = useState<'single' | 'batch'>('single');
+
+  // Deletion confirmation targets for large prominent modal dialogs
+  const [deleteQuizQTarget, setDeleteQuizQTarget] = useState<{ quizId: string; questionId: string; num: number; text: string } | null>(null);
+  const [deleteProblemTarget, setDeleteProblemTarget] = useState<{ id: string; title: string; pageNumber: number; problemNumber: string; text?: string } | null>(null);
+  const [toastNotice, setToastNotice] = useState<string | null>(null);
+  const [continuousAdd, setContinuousAdd] = useState(true);
+  const [recentlyAddedCount, setRecentlyAddedCount] = useState(0);
+  const [successToastMessage, setSuccessToastMessage] = useState<string | null>(null);
+
+  // Modal targeted Chapter & SubUnit
+  const [modalChapterId, setModalChapterId] = useState<string>('');
+  const [modalSubUnitId, setModalSubUnitId] = useState<string>('');
+
+  // Single problem fields
   const [newProbType, setNewProbType] = useState<'중단원 마무리' | '대단원 평가' | '개념 예제' | '확인 문제' | '발전/심화 문제'>('중단원 마무리');
+  const [newProbDifficulty, setNewProbDifficulty] = useState<'쉬움' | '보통' | '도전' | '심화'>('보통');
   const [newPageNum, setNewPageNum] = useState('');
   const [newProbNum, setNewProbNum] = useState('');
   const [newProbText, setNewProbText] = useState('');
@@ -109,9 +184,14 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
   const [newSolutionImage, setNewSolutionImage] = useState<string | null>(null);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
 
+  // Batch multi-problem fields
+  const [batchDrafts, setBatchDrafts] = useState<BatchProblemDraft[]>([]);
+
   const selectorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const batchImageInputRef = useRef<HTMLInputElement>(null);
+  const [activeBatchDraftIdForImage, setActiveBatchDraftIdForImage] = useState<string | null>(null);
 
   // Curriculum structure for this subject
   const curriculumChapters = useMemo(() => {
@@ -153,10 +233,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
       setTargetQuizIdForAdd(subjectQuizzes[0].id);
     }
     setNewQuizQuestionText('');
-    setNewQuizOpt1('');
-    setNewQuizOpt2('');
-    setNewQuizOpt3('');
-    setNewQuizOpt4('');
+    setNewQuizOptions(['', '', '', '', '']); // 5 choices default
     setNewQuizCorrectIdx(0);
     setNewQuizExplanation('');
     setNewQuizHint('');
@@ -169,23 +246,20 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
     e.preventDefault();
     if (!targetQuizIdForAdd || !newQuizQuestionText.trim()) return;
 
-    const opts = [
-      newQuizOpt1.trim(),
-      newQuizOpt2.trim(),
-      newQuizOpt3.trim(),
-      newQuizOpt4.trim(),
-    ].filter(Boolean);
+    const validOpts = newQuizOptions.map((o) => o.trim()).filter(Boolean);
 
-    if (opts.length < 2) {
-      alert('최소 2개 이상의 보기를 입력해주세요.');
+    if (validOpts.length < 2) {
+      alert('최소 2개 이상의 선지(보기) 내용을 입력해주세요.');
       return;
     }
+
+    const safeCorrectIdx = Math.min(newQuizCorrectIdx, validOpts.length - 1);
 
     const newQuestion: QuizQuestion = {
       id: `custom-q-${Date.now()}`,
       questionText: newQuizQuestionText.trim(),
-      options: opts,
-      correctIndex: Math.min(newQuizCorrectIdx, opts.length - 1),
+      options: validOpts,
+      correctIndex: safeCorrectIdx >= 0 ? safeCorrectIdx : 0,
       explanation: newQuizExplanation.trim() || '상세 해설이 등록되었습니다.',
       hint: newQuizHint.trim() || undefined,
       questionImage: newQuizQuestionImage || undefined,
@@ -203,6 +277,9 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
         if (selectedQuizForManage && selectedQuizForManage.id === quiz.id) {
           setSelectedQuizForManage(updatedQuiz);
         }
+        if (selectedQuiz && selectedQuiz.id === quiz.id) {
+          setSelectedQuiz(updatedQuiz);
+        }
         return updatedQuiz;
       }
       return quiz;
@@ -214,18 +291,19 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
   };
 
   const handleDeleteQuizQuestion = (quizId: string, questionId: string) => {
-    if (!confirm('이 문제를 대단원 TEST에서 삭제하시겠습니까?')) return;
-
     const updated = allQuizzes.map((quiz) => {
       if (quiz.id === quizId) {
         const updatedQuestions = quiz.questions.filter((q) => q.id !== questionId);
         const updatedQuiz = {
           ...quiz,
           questions: updatedQuestions,
-          estimatedMinutes: Math.max(5, updatedQuestions.length * 3),
+          estimatedMinutes: Math.max(0, updatedQuestions.length * 3),
         };
         if (selectedQuizForManage && selectedQuizForManage.id === quiz.id) {
           setSelectedQuizForManage(updatedQuiz);
+        }
+        if (selectedQuiz && selectedQuiz.id === quiz.id) {
+          setSelectedQuiz(updatedQuiz);
         }
         return updatedQuiz;
       }
@@ -234,6 +312,8 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
 
     setAllQuizzes(updated);
     saveStoredUnitQuizzes(updated);
+    setToastNotice('문항이 성공적으로 삭제되었습니다.');
+    setTimeout(() => setToastNotice(null), 3000);
   };
 
   const handleOpenEditQuizTime = (quiz: UnitQuiz) => {
@@ -289,24 +369,53 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
     return activeChapterObj.subUnits.find((su) => su.id === selectedSubUnitId) || null;
   }, [activeChapterObj, selectedSubUnitId]);
 
-  // Filtered problems according to selected Chapter / Sub-Unit / Search Query
-  const filteredProblems = useMemo(() => {
+  // Helper to accurately count problems for any subunit
+  const getSubUnitCount = (ch: ChapterGroup, su: SubUnitItem) => {
     return problems.filter((prob) => {
+      if (prob.subject !== subject) return false;
+      if (activeTextbook && prob.textbookId !== activeTextbook.id) return false;
+      if (prob.subUnitId && prob.subUnitId === su.id) return true;
+      if (prob.unitCode && prob.unitCode === su.unitCode) return true;
+
+      const matchesChapter =
+        (prob.chapter && (prob.chapter.includes(ch.chapterName) || prob.chapter.includes(`${ch.chapterNumber}`))) ||
+        prob.unitNumber === ch.chapterNumber;
+      if (!matchesChapter) return false;
+
+      if (su.category === '대단원 평가') {
+        return (
+          prob.problemType === '발전/심화 문제' ||
+          prob.unitName.includes('대단원') ||
+          prob.problemNumber.includes('대단원')
+        );
+      } else {
+        const cleanTitle = su.title.replace(/^\d+\.\s*/, '');
+        return prob.unitName.includes(cleanTitle) || prob.unitName.includes(su.title);
+      }
+    }).length;
+  };
+
+  // Filtered problems according to selected Chapter / Sub-Unit / Search Query with sequential sort
+  const filteredProblems = useMemo(() => {
+    const list = problems.filter((prob) => {
       if (prob.subject !== subject) return false;
       if (activeTextbook && prob.textbookId !== activeTextbook.id) return false;
 
       // Filter by Chapter
       if (activeChapterObj) {
         const matchesChapter = 
-          prob.chapter.includes(activeChapterObj.chapterName) ||
-          prob.chapter.includes(`${activeChapterObj.chapterNumber}`) ||
+          (prob.chapter && (prob.chapter.includes(activeChapterObj.chapterName) || prob.chapter.includes(`${activeChapterObj.chapterNumber}`))) ||
           prob.unitNumber === activeChapterObj.chapterNumber;
         if (!matchesChapter) return false;
       }
 
       // Filter by Sub-Unit
       if (activeSubUnitObj) {
-        if (activeSubUnitObj.category === '대단원 평가') {
+        if (prob.subUnitId && prob.subUnitId === activeSubUnitObj.id) {
+          // Direct match by ID
+        } else if (prob.unitCode && prob.unitCode === activeSubUnitObj.unitCode) {
+          // Direct match by unit code
+        } else if (activeSubUnitObj.category === '대단원 평가') {
           const isGrand = prob.problemType === '발전/심화 문제' || 
                           prob.unitName.includes('대단원') || 
                           prob.problemNumber.includes('대단원');
@@ -338,6 +447,14 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
       }
 
       return true;
+    });
+
+    // Sequential sort: Page ascending, then Problem Number natural sort (01번, 02번, 03번...)
+    return list.sort((a, b) => {
+      if (a.pageNumber !== b.pageNumber) {
+        return a.pageNumber - b.pageNumber;
+      }
+      return a.problemNumber.localeCompare(b.problemNumber, undefined, { numeric: true });
     });
   }, [problems, subject, activeTextbook, activeChapterObj, activeSubUnitObj, selectedCategoryFilter, searchQuery]);
 
@@ -371,13 +488,162 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
     setSearchQuery('');
   };
 
-  const handleCreateProblem = (e: React.FormEvent) => {
+  // Open problem registration modal pre-configured for a specific chapter/subunit
+  const handleOpenAddProblemModal = (
+    targetChapterId?: string,
+    targetSubUnitId?: string,
+    mode: 'single' | 'batch' = 'single'
+  ) => {
+    const chId = targetChapterId || selectedChapterId || curriculumChapters[0]?.id || '';
+    const targetChapter = curriculumChapters.find((c) => c.id === chId) || curriculumChapters[0];
+    const suId =
+      targetSubUnitId ||
+      selectedSubUnitId ||
+      targetChapter?.subUnits[0]?.id ||
+      '';
+    const targetSubUnit =
+      targetChapter?.grandAssessment.id === suId
+        ? targetChapter.grandAssessment
+        : targetChapter?.subUnits.find((s) => s.id === suId) || targetChapter?.subUnits[0];
+
+    setModalChapterId(chId);
+    setModalSubUnitId(suId);
+    setAddProblemModalMode(mode);
+    setRecentlyAddedCount(0);
+    setSuccessToastMessage(null);
+
+    // Compute existing count in that subunit to auto-suggest next problem number
+    let existingCount = 0;
+    if (targetChapter && targetSubUnit) {
+      existingCount = getSubUnitCount(targetChapter, targetSubUnit);
+    }
+    const nextNum = existingCount + 1;
+    const formattedNum = nextNum < 10 ? `0${nextNum}` : `${nextNum}`;
+
+    if (targetSubUnit?.category === '대단원 평가') {
+      setNewProbType('대단원 평가');
+      setNewProbNum(`대단원 평가 ${formattedNum}번`);
+    } else {
+      setNewProbType('중단원 마무리');
+      setNewProbNum(`중단원 마무리 ${formattedNum}번`);
+    }
+
+    setNewProbDifficulty('보통');
+    setNewProbText('');
+    setNewStep1('');
+    setNewStep2('');
+    setNewFinalAns('');
+    setNewTip('');
+    setNewSolutionImage(null);
+
+    // Try extracting page number from page range (e.g., "p.39 ~ p.58")
+    if (targetSubUnit?.pageRange) {
+      const match = targetSubUnit.pageRange.match(/\d+/);
+      if (match) {
+        setNewPageNum(match[0]);
+      }
+    }
+
+    // Initialize Batch drafts
+    const initialBatch: BatchProblemDraft[] = [
+      {
+        tempId: `draft-${Date.now()}-1`,
+        problemNumber: `0${nextNum}번`,
+        pageNumber: newPageNum || (targetSubUnit?.pageRange?.match(/\d+/)?.[0] ?? '40'),
+        difficulty: '보통',
+        problemType: targetSubUnit?.category === '대단원 평가' ? '대단원 평가' : '중단원 마무리',
+        problemText: '',
+        step1: '',
+        step2: '',
+        finalAnswer: '',
+        dreamTip: '',
+        solutionImage: null,
+      },
+      {
+        tempId: `draft-${Date.now()}-2`,
+        problemNumber: `0${nextNum + 1}번`,
+        pageNumber: newPageNum || (targetSubUnit?.pageRange?.match(/\d+/)?.[0] ?? '40'),
+        difficulty: '보통',
+        problemType: targetSubUnit?.category === '대단원 평가' ? '대단원 평가' : '중단원 마무리',
+        problemText: '',
+        step1: '',
+        step2: '',
+        finalAnswer: '',
+        dreamTip: '',
+        solutionImage: null,
+      },
+    ];
+    setBatchDrafts(initialBatch);
+
+    setShowAddProblemModal(true);
+  };
+
+  // Helper to add a new card in batch mode
+  const handleAddBatchDraftRow = () => {
+    const nextIdx = batchDrafts.length + 1;
+    const formattedNum = nextIdx < 10 ? `0${nextIdx}번` : `${nextIdx}번`;
+    const lastPage = batchDrafts[batchDrafts.length - 1]?.pageNumber || '40';
+    setBatchDrafts((prev) => [
+      ...prev,
+      {
+        tempId: `draft-${Date.now()}-${Math.random()}`,
+        problemNumber: formattedNum,
+        pageNumber: lastPage,
+        difficulty: '보통',
+        problemType: newProbType,
+        problemText: '',
+        step1: '',
+        step2: '',
+        finalAnswer: '',
+        dreamTip: '',
+        solutionImage: null,
+      },
+    ]);
+  };
+
+  const handleRemoveBatchDraftRow = (tempId: string) => {
+    if (batchDrafts.length <= 1) {
+      alert('최소 1개 이상의 문제 카드는 유지되어야 합니다.');
+      return;
+    }
+    setBatchDrafts((prev) => prev.filter((d) => d.tempId !== tempId));
+  };
+
+  const handleUpdateBatchDraftField = (tempId: string, field: keyof BatchProblemDraft, value: any) => {
+    setBatchDrafts((prev) =>
+      prev.map((d) => (d.tempId === tempId ? { ...d, [field]: value } : d))
+    );
+  };
+
+  const handleBatchImageFileRead = (file: File) => {
+    if (!activeBatchDraftIdForImage) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === 'string') {
+        handleUpdateBatchDraftField(activeBatchDraftIdForImage, 'solutionImage', e.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Single / Continuous Problem Creation
+  const handleCreateProblemSingle = (e: React.FormEvent) => {
     e.preventDefault();
     if (userRole !== 'admin') {
       alert('교과서 문제 및 풀이 등록은 관리자(선생님)만 가능합니다.');
       return;
     }
-    if (!newUnitName.trim() || !newProbText.trim() || !newFinalAns.trim()) return;
+
+    const targetChapter = curriculumChapters.find((c) => c.id === modalChapterId) || curriculumChapters[0];
+    const targetSubUnit =
+      targetChapter?.grandAssessment.id === modalSubUnitId
+        ? targetChapter.grandAssessment
+        : targetChapter?.subUnits.find((s) => s.id === modalSubUnitId) || targetChapter?.subUnits[0];
+
+    if (!newProbText.trim() || !newFinalAns.trim()) {
+      alert('문제 내용과 최종 정답을 모두 입력해주세요.');
+      return;
+    }
 
     const steps: SolutionStep[] = [];
     if (newStep1.trim()) {
@@ -402,22 +668,26 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
       });
     }
 
+    const probNumStr = newProbNum.trim() || '문제 1번';
+
     const created: ProblemItem = {
-      id: `prob-custom-${Date.now()}`,
+      id: `prob-custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       textbookId: activeTextbook?.id || (subject === 'math' ? 'tb-math-mr-h2' : 'tb-sci-bs-h1'),
       subject: subject,
       grade: 'high_1',
-      chapter: newChapterName.trim(),
-      unitNumber: parseInt(newPageNum, 10) ? Math.floor(parseInt(newPageNum, 10) / 40) + 1 : 1,
-      unitName: newUnitName.trim(),
+      chapter: targetChapter.fullName,
+      unitNumber: targetChapter.chapterNumber,
+      unitName: targetSubUnit.title,
+      subUnitId: targetSubUnit.id,
+      unitCode: targetSubUnit.unitCode,
       pageNumber: parseInt(newPageNum, 10) || 1,
-      problemNumber: newProbNum.trim() || '연습 문제 1번',
+      problemNumber: probNumStr,
       problemType: newProbType,
-      difficulty: newProbType === '대단원 평가' ? '도전' : '보통',
+      difficulty: newProbDifficulty,
       problemText: newProbText.trim(),
       solutionSteps: steps,
       finalAnswer: newFinalAns.trim(),
-      coreConcepts: [newUnitName.trim(), newProbType],
+      coreConcepts: [targetSubUnit.title, newProbType],
       dreamTip: newTip.trim() || '💡 핵심 개념과 공식을 꼼꼼히 확인하고 부호 실수를 조심하세요!',
       solutionImage: newSolutionImage || undefined,
       peerTips: [],
@@ -427,17 +697,116 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
     };
 
     onAddNewProblem(created);
-    setShowAddProblemModal(false);
 
-    // Reset inputs
-    setNewProbNum('');
-    setNewProbText('');
-    setNewStep1('');
-    setNewStep2('');
-    setNewFinalAns('');
-    setNewTip('');
-    setNewSolutionImage(null);
-    alert('새 교과서 문제 및 풀이가 성공적으로 등록되었습니다! 🎉');
+    if (continuousAdd) {
+      // Keep modal open and advance problem number for rapid entry!
+      setRecentlyAddedCount((prev) => prev + 1);
+      setSuccessToastMessage(`✅ [${probNumStr}] 등록 완료! 다음 문제를 계속 입력하세요.`);
+      setTimeout(() => setSuccessToastMessage(null), 4000);
+
+      // Auto-increment problem number (e.g. 01번 -> 02번)
+      const numMatch = probNumStr.match(/\d+/);
+      if (numMatch) {
+        const nextInt = parseInt(numMatch[0], 10) + 1;
+        const formatted = nextInt < 10 ? `0${nextInt}` : `${nextInt}`;
+        setNewProbNum(probNumStr.replace(numMatch[0], formatted));
+      } else {
+        setNewProbNum(`${probNumStr} (다음)`);
+      }
+
+      // Clear question body and answer for next problem, while keeping unit & page intact
+      setNewProbText('');
+      setNewStep1('');
+      setNewStep2('');
+      setNewFinalAns('');
+      setNewTip('');
+      setNewSolutionImage(null);
+    } else {
+      setShowAddProblemModal(false);
+      alert(`새 교과서 문제 [${probNumStr}]가 성공적으로 등록되었습니다! 🎉`);
+    }
+  };
+
+  // Batch Multi-Problem Submission
+  const handleCreateProblemBatch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (userRole !== 'admin') {
+      alert('교과서 문제 및 풀이 등록은 관리자(선생님)만 가능합니다.');
+      return;
+    }
+
+    const targetChapter = curriculumChapters.find((c) => c.id === modalChapterId) || curriculumChapters[0];
+    const targetSubUnit =
+      targetChapter?.grandAssessment.id === modalSubUnitId
+        ? targetChapter.grandAssessment
+        : targetChapter?.subUnits.find((s) => s.id === modalSubUnitId) || targetChapter?.subUnits[0];
+
+    // Filter valid drafts
+    const validDrafts = batchDrafts.filter((d) => d.problemText.trim() && d.finalAnswer.trim());
+    if (validDrafts.length === 0) {
+      alert('등록할 문제의 [문제 내용]과 [최종 정답]을 최소 1문제 이상 입력해주세요.');
+      return;
+    }
+
+    const newProblemsToSave: ProblemItem[] = validDrafts.map((draft, idx) => {
+      const steps: SolutionStep[] = [];
+      if (draft.step1.trim()) {
+        steps.push({
+          stepNumber: 1,
+          title: '핵심 개념 및 공식 적용',
+          explanation: draft.step1.trim(),
+        });
+      }
+      if (draft.step2.trim()) {
+        steps.push({
+          stepNumber: steps.length + 1,
+          title: '풀이 전개 및 정리',
+          explanation: draft.step2.trim(),
+        });
+      }
+      if (steps.length === 0) {
+        steps.push({
+          stepNumber: 1,
+          title: '단계별 해설',
+          explanation: '교과서 공식과 정의를 활용하여 차례대로 계산합니다.',
+        });
+      }
+
+      return {
+        id: `prob-custom-batch-${Date.now()}-${idx}`,
+        textbookId: activeTextbook?.id || (subject === 'math' ? 'tb-math-mr-h2' : 'tb-sci-bs-h1'),
+        subject: subject,
+        grade: 'high_1',
+        chapter: targetChapter.fullName,
+        unitNumber: targetChapter.chapterNumber,
+        unitName: targetSubUnit.title,
+        subUnitId: targetSubUnit.id,
+        unitCode: targetSubUnit.unitCode,
+        pageNumber: parseInt(draft.pageNumber, 10) || 1,
+        problemNumber: draft.problemNumber.trim() || `문제 ${idx + 1}번`,
+        problemType: draft.problemType,
+        difficulty: draft.difficulty,
+        problemText: draft.problemText.trim(),
+        solutionSteps: steps,
+        finalAnswer: draft.finalAnswer.trim(),
+        coreConcepts: [targetSubUnit.title, draft.problemType],
+        dreamTip: draft.dreamTip.trim() || '💡 핵심 개념과 공식을 꼼꼼히 확인하세요!',
+        solutionImage: draft.solutionImage || undefined,
+        peerTips: [],
+        studentSolutions: [],
+        views: 1,
+        likes: 0,
+      };
+    });
+
+    if (onAddNewProblems) {
+      onAddNewProblems(newProblemsToSave);
+    } else {
+      newProblemsToSave.forEach((prob) => onAddNewProblem(prob));
+    }
+
+    setShowAddProblemModal(false);
+    alert(`🎉 [${targetSubUnit.title}] 단원에 총 ${newProblemsToSave.length}개 문제가 성공적으로 일괄 등록되었습니다!`);
   };
 
   const themeBorder = subject === 'math' ? 'border-blue-500' : 'border-emerald-500';
@@ -460,15 +829,26 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
 
         <div className="flex items-center gap-2 flex-wrap">
           {userRole === 'admin' && (
-            <button
-              id="btn-admin-add-problem-top"
-              type="button"
-              onClick={() => setShowAddProblemModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black shadow-md transition-all active:scale-95"
-            >
-              <PlusCircle className="w-3.5 h-3.5 text-white" />
-              <span>+ 풀이 직접 등록 (선생님)</span>
-            </button>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                id="btn-admin-add-problem-top"
+                type="button"
+                onClick={() => handleOpenAddProblemModal(undefined, undefined, 'single')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black shadow-md transition-all active:scale-95"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-white" />
+                <span>+ 문제 단일/연속 등록</span>
+              </button>
+              <button
+                id="btn-admin-add-batch-top"
+                type="button"
+                onClick={() => handleOpenAddProblemModal(undefined, undefined, 'batch')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md transition-all active:scale-95"
+              >
+                <Layers className="w-3.5 h-3.5 text-white" />
+                <span>⚡ 여러 문제 일괄 등록</span>
+              </button>
+            </div>
           )}
 
           <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white border-2 border-amber-200 shadow-2xs">
@@ -479,6 +859,14 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Toast Notice Banner */}
+      {toastNotice && (
+        <div className="bg-emerald-600 text-white text-xs sm:text-sm font-black py-2.5 px-4 rounded-2xl text-center shadow-md animate-in fade-in flex items-center justify-center gap-2">
+          <span>✓</span>
+          <span>{toastNotice}</span>
+        </div>
+      )}
 
       {/* Main Tab Navigator (Clean, Spacious, Beautiful Segmented Control) */}
       <div className="bg-amber-100/80 p-1.5 sm:p-2 rounded-3xl border-2 border-amber-200 shadow-inner flex flex-col sm:flex-row gap-1.5 sm:gap-2">
@@ -714,61 +1102,114 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                             {/* 중단원 마무리 문제들 */}
                             {ch.subUnits.map((su) => {
                               const isSubActive = activeSubUnitObj?.id === su.id;
+                              const count = getSubUnitCount(ch, su);
                               return (
-                                <button
+                                <div
                                   key={su.id}
-                                  type="button"
-                                  onClick={() => handleSelectSubUnit(ch, su)}
-                                  className={`p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-all group ${
+                                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all group ${
                                     isSubActive
                                       ? 'bg-blue-600 text-white border-blue-600 shadow-md font-bold'
                                       : 'bg-white hover:bg-blue-50 text-slate-800 border-amber-100 hover:border-blue-300'
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectSubUnit(ch, su)}
+                                    className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                                  >
                                     <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${isSubActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'}`}>
                                       중단원
                                     </span>
                                     <span className="text-xs font-bold break-keep">
                                       {su.title}
                                     </span>
+                                  </button>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isSubActive ? 'bg-white text-blue-900' : 'bg-amber-100 text-amber-900'}`}>
+                                      {count}문제
+                                    </span>
+                                    {userRole === 'admin' && (
+                                      <button
+                                        type="button"
+                                        title="이 중단원에 문제 추가"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenAddProblemModal(ch.id, su.id, 'single');
+                                        }}
+                                        className={`p-1 rounded-md text-[10px] font-black flex items-center gap-0.5 transition-all ${
+                                          isSubActive
+                                            ? 'bg-white/30 hover:bg-white text-white hover:text-blue-900'
+                                            : 'bg-amber-200 hover:bg-amber-400 text-amber-950'
+                                        }`}
+                                      >
+                                        <PlusCircle className="w-3 h-3" />
+                                        <span>추가</span>
+                                      </button>
+                                    )}
                                   </div>
-                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${isSubActive ? 'bg-white text-blue-900' : 'bg-amber-100 text-amber-900'}`}>
-                                    마무리 문제
-                                  </span>
-                                </button>
+                                </div>
                               );
                             })}
 
                             {/* 대단원 평가 문제 (전체) */}
-                            <button
-                              type="button"
-                              onClick={() => handleSelectSubUnit(ch, ch.grandAssessment)}
-                              className={`sm:col-span-2 p-2.5 rounded-xl border-2 text-left flex items-center justify-between gap-2 transition-all ${
-                                activeSubUnitObj?.id === ch.grandAssessment.id
-                                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-md font-bold'
-                                  : 'bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 border-amber-300 hover:border-amber-400'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-base">🏆</span>
-                                <div>
-                                  <span className="text-xs font-black block">
-                                    {ch.grandAssessment.title}
-                                  </span>
-                                  <span className={`text-[10px] font-medium ${activeSubUnitObj?.id === ch.grandAssessment.id ? 'text-amber-100' : 'text-amber-700'}`}>
-                                    {ch.chapterNumber}단원 전체 범위 실전 대단원 평가 문제 풀기
-                                  </span>
+                            {(() => {
+                              const grandCount = getSubUnitCount(ch, ch.grandAssessment);
+                              const isGrandActive = activeSubUnitObj?.id === ch.grandAssessment.id;
+                              return (
+                                <div
+                                  className={`sm:col-span-2 p-2.5 rounded-xl border-2 flex items-center justify-between gap-2 transition-all ${
+                                    isGrandActive
+                                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-md font-bold'
+                                      : 'bg-amber-50/80 hover:bg-amber-100/80 text-amber-950 border-amber-300 hover:border-amber-400'
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectSubUnit(ch, ch.grandAssessment)}
+                                    className="flex items-center gap-2 flex-1 text-left"
+                                  >
+                                    <span className="text-base">🏆</span>
+                                    <div>
+                                      <span className="text-xs font-black block">
+                                        {ch.grandAssessment.title}
+                                      </span>
+                                      <span className={`text-[10px] font-medium ${isGrandActive ? 'text-amber-100' : 'text-amber-700'}`}>
+                                        {ch.chapterNumber}단원 전체 범위 실전 대단원 평가 ({grandCount}문제 수록)
+                                      </span>
+                                    </div>
+                                  </button>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full shadow-2xs ${
+                                      isGrandActive
+                                        ? 'bg-white text-amber-800'
+                                        : 'bg-amber-500 text-white'
+                                    }`}>
+                                      {grandCount}문제 풀기 →
+                                    </span>
+                                    {userRole === 'admin' && (
+                                      <button
+                                        type="button"
+                                        title="대단원 평가 문제 추가"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenAddProblemModal(ch.id, ch.grandAssessment.id, 'single');
+                                        }}
+                                        className={`p-1 px-2 rounded-lg text-[10px] font-black flex items-center gap-1 transition-all ${
+                                          isGrandActive
+                                            ? 'bg-white/30 hover:bg-white text-white hover:text-amber-900'
+                                            : 'bg-orange-600 hover:bg-orange-700 text-white'
+                                        }`}
+                                      >
+                                        <PlusCircle className="w-3 h-3" />
+                                        <span>추가</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full shrink-0 shadow-2xs ${
-                                activeSubUnitObj?.id === ch.grandAssessment.id
-                                  ? 'bg-white text-amber-800'
-                                  : 'bg-amber-500 text-white'
-                              }`}>
-                                대단원 평가 풀기 →
-                              </span>
-                            </button>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -776,7 +1217,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                   </div>
 
                   <div className="pt-2 border-t border-amber-200 flex items-center justify-between text-xs text-slate-500">
-                    <span>💡 원하시는 단원이나 평가를 누르면 즉시 맞춤 문제와 풀이가 열립니다.</span>
+                    <span>💡 원하시는 단원이나 평가를 누르면 즉시 해당 단원의 모든 문제와 풀이가 열립니다.</span>
                     <button
                       type="button"
                       onClick={() => setIsUnitSelectorOpen(false)}
@@ -812,7 +1253,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
               {(activeChapterObj || selectedCategoryFilter !== 'all') && (
                 <button
                   type="button"
@@ -824,7 +1265,28 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                 </button>
               )}
 
-              <span className="text-xs font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+              {userRole === 'admin' && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddProblemModal(activeChapterObj?.id, activeSubUnitObj?.id, 'single')}
+                    className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    <span>+ 문제 추가 (연속)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddProblemModal(activeChapterObj?.id, activeSubUnitObj?.id, 'batch')}
+                    className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                  >
+                    <Layers className="w-3 h-3" />
+                    <span>⚡ 일괄 등록</span>
+                  </button>
+                </div>
+              )}
+
+              <span className="text-xs font-black text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
                 {filteredProblems.length}문제 수록
               </span>
             </div>
@@ -835,26 +1297,52 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
             <motion.div
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-2xl text-white shadow-md flex items-center justify-between"
+              className="p-3 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-2xl text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5"
             >
               <div className="flex items-center gap-2.5">
                 <span className="text-2xl">🏆</span>
                 <div>
                   <span className="text-xs font-black block">
-                    {matchingQuizForSelection.unitName} 실전 TEST 준비 완료!
+                    {matchingQuizForSelection.unitName} 실전 TEST ({matchingQuizForSelection.questions.length}문항)
                   </span>
                   <span className="text-[11px] text-amber-100 font-medium">
-                    {matchingQuizForSelection.questions.length}문항 실전 테스트를 바로 풀어보고 자동 채점해 보세요.
+                    대단원 실전 테스트를 바로 풀어보고 자동 채점과 오답노트를 확인해보세요.
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedQuiz(matchingQuizForSelection)}
-                className="px-3 py-1.5 rounded-xl bg-white text-amber-900 text-xs font-black shadow-sm hover:bg-amber-50 active:scale-95 transition-all shrink-0 ml-2"
-              >
-                TEST 시작하기 →
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                {userRole === 'admin' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddQuizQuestion(matchingQuizForSelection.id)}
+                      className="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-black shadow-xs transition-all flex items-center gap-1"
+                      title="이 단원에 새 테스트 문제 출제"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>문제 출제</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuizForManage(matchingQuizForSelection);
+                        setShowManageQuizModal(true);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-black/30 hover:bg-black/40 text-amber-100 text-xs font-bold transition-all flex items-center gap-1"
+                      title="문항 관리 및 삭제"
+                    >
+                      <span>문항 관리 ({matchingQuizForSelection.questions.length})</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedQuiz(matchingQuizForSelection)}
+                  className="px-3 py-1.5 rounded-xl bg-white text-amber-900 text-xs font-black shadow-sm hover:bg-amber-50 active:scale-95 transition-all"
+                >
+                  TEST 시작하기 →
+                </button>
+              </div>
             </motion.div>
           )}
 
@@ -867,17 +1355,29 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                   선택하신 단원의 등록된 교과서 문제가 없습니다.
                 </p>
                 {userRole === 'admin' ? (
-                  <>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      선생님 권한으로 이 단원의 새 중단원 마무리 또는 대단원 평가 문제와 단계별 풀이를 직접 등록할 수 있습니다.
+                  <div className="space-y-2.5 max-w-md mx-auto">
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      선생님 권한으로 이 단원({activeSubUnitObj?.title || activeChapterObj?.fullName || '선택 단원'})에 여러 문제를 한 번에 등록하거나 연속으로 등록할 수 있습니다.
                     </p>
-                    <button
-                      onClick={() => setShowAddProblemModal(true)}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95"
-                    >
-                      + 이 단원에 새 문제 & 풀이 등록하기
-                    </button>
-                  </>
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddProblemModal(activeChapterObj?.id, activeSubUnitObj?.id, 'single')}
+                        className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                      >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>+ 단일 / 연속 문제 등록하기</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddProblemModal(activeChapterObj?.id, activeSubUnitObj?.id, 'batch')}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                      >
+                        <Layers className="w-4 h-4" />
+                        <span>⚡ 여러 문제 한 번에 일괄 등록</span>
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
                     다른 단원을 선택하시거나, 상단 돋보기 버튼을 눌러 원하는 중단원 마무리/대단원 평가 문제를 골라보세요!
@@ -923,14 +1423,19 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (confirm(`'p.${prob.pageNumber} ${prob.problemNumber}' 문제를 목록에서 삭제하시겠습니까? (관리자 전용)`)) {
-                                    onDeleteProblem(prob.id);
-                                  }
+                                  setDeleteProblemTarget({
+                                    id: prob.id,
+                                    title: `${prob.unitName} (p.${prob.pageNumber} ${prob.problemNumber})`,
+                                    pageNumber: prob.pageNumber,
+                                    problemNumber: prob.problemNumber,
+                                    text: prob.problemText,
+                                  });
                                 }}
-                                className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
+                                className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors flex items-center gap-1 border border-rose-200"
                                 title="관리자 권한으로 문제 삭제"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold">삭제</span>
                               </button>
                             )}
                           </div>
@@ -959,9 +1464,7 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                     {/* Bottom row */}
                     <div className="pt-1 flex items-center justify-between border-t border-slate-100 text-xs">
                       <div className="flex items-center gap-2 text-slate-500 font-medium">
-                        <span>💡 친구 꿀팁 {prob.peerTips?.length || 0}개</span>
-                        <span>•</span>
-                        <span className="text-emerald-600 font-bold">정답 & 단계별 풀이 제공</span>
+                        <span className="text-emerald-600 font-bold">✓ 정답 & 단계별 풀이 제공</span>
                       </div>
 
                       <span className="font-black text-blue-600 group-hover:translate-x-1 transition-transform flex items-center gap-0.5">
@@ -1218,7 +1721,10 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
         {selectedQuiz && (
           <UnitTestModal
             quiz={selectedQuiz}
+            userRole={userRole}
             onClose={() => setSelectedQuiz(null)}
+            onDeleteQuestion={handleDeleteQuizQuestion}
+            onOpenAddQuestion={(quizId) => handleOpenAddQuizQuestion(quizId)}
             onCompleteQuiz={(_score, _total, attempt) => {
               if (attempt && onCompleteQuiz) {
                 onCompleteQuiz(attempt);
@@ -1347,45 +1853,129 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                   )}
                 </div>
 
-                {/* 4 Choices */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">
-                      보기 4지선다 입력 및 정답 선택 <span className="text-rose-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-amber-700 font-bold">
-                      정답인 보기 앞 라디오 버튼을 체크하세요
-                    </span>
-                  </div>
+                {/* Dynamic Choices (선지 추가/삭제/지정) */}
+                <div className="space-y-2.5 p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <div>
+                      <label className="text-xs font-black text-slate-800 flex items-center gap-1">
+                        <span>선지(보기) 설정 및 정답 지정</span>
+                        <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-slate-500 font-medium">
+                        정답인 선지 앞 [✓ 정답] 버튼을 클릭하세요 ({newQuizOptions.length}개 선지 구성)
+                      </span>
+                    </div>
 
-                  {[
-                    { val: newQuizOpt1, setVal: setNewQuizOpt1, idx: 0, label: '①번 보기' },
-                    { val: newQuizOpt2, setVal: setNewQuizOpt2, idx: 1, label: '②번 보기' },
-                    { val: newQuizOpt3, setVal: setNewQuizOpt3, idx: 2, label: '③번 보기' },
-                    { val: newQuizOpt4, setVal: setNewQuizOpt4, idx: 3, label: '④번 보기' },
-                  ].map((optItem) => (
-                    <div key={optItem.idx} className="flex items-center gap-2">
+                    {/* Presets & Add Option Button */}
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => setNewQuizCorrectIdx(optItem.idx)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-black border transition-all flex items-center gap-1 shrink-0 ${
-                          newQuizCorrectIdx === optItem.idx
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                        onClick={() => handleSetOptionCountPreset(5)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all ${
+                          newQuizOptions.length === 5
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50'
                         }`}
                       >
-                        {newQuizCorrectIdx === optItem.idx ? '✓ 정답' : `${optItem.idx + 1}번`}
+                        5지선다
                       </button>
-                      <input
-                        type="text"
-                        placeholder={`${optItem.label} 내용을 입력하세요`}
-                        value={optItem.val}
-                        onChange={(e) => optItem.setVal(e.target.value)}
-                        required={optItem.idx < 2}
-                        className="flex-1 px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSetOptionCountPreset(4)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all ${
+                          newQuizOptions.length === 4
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        4지선다
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetOptionCountPreset(2)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all ${
+                          newQuizOptions.length === 2
+                            ? 'bg-amber-500 text-white border-amber-500 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        O/X
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddOptionField}
+                        className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs flex items-center gap-0.5 transition-all"
+                        title="새 보기(선지) 추가하기"
+                      >
+                        <PlusCircle className="w-3 h-3" />
+                        <span>+ 선지 추가</span>
+                      </button>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    {newQuizOptions.map((optText, optIdx) => {
+                      const isCorrect = newQuizCorrectIdx === optIdx;
+                      return (
+                        <div
+                          key={optIdx}
+                          className={`flex items-center gap-2 p-1.5 rounded-xl border transition-all ${
+                            isCorrect
+                              ? 'bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-300'
+                              : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setNewQuizCorrectIdx(optIdx)}
+                            className={`px-2 py-1.5 rounded-lg text-xs font-black border transition-all flex items-center gap-1 shrink-0 ${
+                              isCorrect
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                            }`}
+                            title={isCorrect ? '정답으로 지정됨' : '클릭하여 정답으로 지정'}
+                          >
+                            <span>{CIRCLED_NUMBERS[optIdx] || optIdx + 1}</span>
+                            <span>{isCorrect ? '✓ 정답' : '선택'}</span>
+                          </button>
+
+                          <input
+                            type="text"
+                            placeholder={`${CIRCLED_NUMBERS[optIdx] || optIdx + 1}번 선지 내용을 입력하세요`}
+                            value={optText}
+                            onChange={(e) => handleUpdateOptionText(optIdx, e.target.value)}
+                            required={optIdx < 2}
+                            className="flex-1 px-3 py-1.5 bg-transparent border-none text-xs font-medium text-slate-800 focus:outline-none placeholder:text-slate-400"
+                          />
+
+                          {newQuizOptions.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOptionField(optIdx)}
+                              className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
+                              title="이 선지 삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-emerald-800 font-bold">
+                      💡 현재 지정된 정답: {CIRCLED_NUMBERS[newQuizCorrectIdx] || newQuizCorrectIdx + 1}번 선지
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleAddOptionField}
+                      className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5 text-amber-600" />
+                      <span>선지 항목 하나 더 추가 ({newQuizOptions.length}/10)</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Explanation */}
@@ -1591,11 +2181,19 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleDeleteQuizQuestion(selectedQuizForManage.id, q.id)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
-                            title="문제 삭제"
+                            onClick={() =>
+                              setDeleteQuizQTarget({
+                                quizId: selectedQuizForManage.id,
+                                questionId: q.id,
+                                num: idx + 1,
+                                text: q.questionText,
+                              })
+                            }
+                            className="px-2.5 py-1 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-bold border border-rose-200 transition-colors shrink-0 flex items-center gap-1 shadow-2xs"
+                            title="선생님 권한으로 문항 삭제"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>삭제</span>
                           </button>
                         </div>
 
@@ -1611,17 +2209,17 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
                               }`}
                             >
                               <span
-                                className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                                className={`w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold shrink-0 ${
                                   optIdx === q.correctIndex
                                     ? 'bg-emerald-600 text-white'
                                     : 'bg-slate-200 text-slate-600'
                                 }`}
                               >
-                                {optIdx + 1}
+                                {CIRCLED_NUMBERS[optIdx] || optIdx + 1}
                               </span>
-                              <span>{opt}</span>
+                              <span className="truncate">{opt}</span>
                               {optIdx === q.correctIndex && (
-                                <span className="ml-auto text-[10px] text-emerald-600 font-black">
+                                <span className="ml-auto text-[10px] text-emerald-600 font-black shrink-0">
                                   ✓ 정답
                                 </span>
                               )}
@@ -1655,269 +2253,674 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Modal: Add New Problem & Solution (Admin only) */}
+      {/* Modal: Add New Problem & Solution (Admin only - Single/Continuous & Batch Multi-Problem) */}
       <AnimatePresence>
         {showAddProblemModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-[#FFFDF9] rounded-3xl shadow-2xl border-4 border-amber-200 overflow-hidden flex flex-col max-h-[90vh]"
+              className={`w-full ${
+                addProblemModalMode === 'batch' ? 'max-w-4xl' : 'max-w-xl'
+              } bg-[#FFFDF9] rounded-3xl shadow-2xl border-4 border-amber-300 overflow-hidden flex flex-col max-h-[92vh] transition-all`}
             >
-              <div className="bg-amber-500 p-4 text-white flex items-center justify-between shadow-md">
+              {/* Modal Top Header */}
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white flex items-center justify-between shadow-md shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">✍️</span>
-                  <h3 className="text-base font-black">교과서 문제 & 단계별 풀이 등록 (관리자)</h3>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black">
+                      교과서 문제 & 단계별 풀이 등록 (선생님)
+                    </h3>
+                    <p className="text-[11px] text-amber-100 font-medium">
+                      {subject === 'math' ? '미래엔 공통수학 2' : '비상교육 통합과학 2'} 단원별 문제 등록 시스템
+                    </p>
+                  </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowAddProblemModal(false)}
-                  className="p-1 rounded-lg hover:bg-white/20"
+                  className="p-1.5 rounded-xl hover:bg-white/20 text-white transition-colors"
                 >
-                  <ArrowLeft className="w-5 h-5" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateProblem} className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
-                {/* Chapter & Unit Selectors */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 block">단원 선택</label>
+              {/* Mode Switcher Tabs */}
+              <div className="p-2.5 bg-amber-100/70 border-b border-amber-200 flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAddProblemModalMode('single')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                    addProblemModalMode === 'single'
+                      ? 'bg-white text-blue-900 border-2 border-blue-400 shadow-sm'
+                      : 'text-slate-600 hover:bg-white/50 border-2 border-transparent'
+                  }`}
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>단일 / 연속 문제 등록</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddProblemModalMode('batch')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
+                    addProblemModalMode === 'batch'
+                      ? 'bg-white text-blue-900 border-2 border-blue-400 shadow-sm'
+                      : 'text-slate-600 hover:bg-white/50 border-2 border-transparent'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>⚡ 여러 문제 한 번에 일괄 등록 (Multi-Add)</span>
+                </button>
+              </div>
+
+              {/* Target Chapter & SubUnit Selectors Bar (Common for both modes) */}
+              <div className="p-3 sm:p-4 bg-amber-50/70 border-b border-amber-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
+                <div>
+                  <label className="text-[11px] font-black text-slate-700 block mb-1">
+                    1. 등록할 대단원 선택
+                  </label>
                   <select
-                    value={newChapterName}
+                    value={modalChapterId}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      setNewChapterName(val);
-                      if (val.includes('도형')) {
-                        setNewUnitName('1. 평면좌표와 직선의 방정식');
-                      } else if (val.includes('집합')) {
-                        setNewUnitName('1. 집합');
-                      } else if (val.includes('함수')) {
-                        setNewUnitName('1. 함수');
-                      } else if (val.includes('변화와 다양성')) {
-                        setNewUnitName('1. 지구 환경 변화와 생물다양성');
-                      } else if (val.includes('환경과 에너지')) {
-                        setNewUnitName('1. 생태계와 환경 변화');
-                      } else if (val.includes('과학과 미래 사회')) {
-                        setNewUnitName('1. 과학 기술의 활용');
-                      }
+                      const chId = e.target.value;
+                      setModalChapterId(chId);
+                      const targetCh = curriculumChapters.find((c) => c.id === chId) || curriculumChapters[0];
+                      const firstSub = targetCh.subUnits[0] || targetCh.grandAssessment;
+                      setModalSubUnitId(firstSub.id);
+                      const count = getSubUnitCount(targetCh, firstSub);
+                      const nextNum = count + 1;
+                      setNewProbNum(nextNum < 10 ? `0${nextNum}번` : `${nextNum}번`);
                     }}
                     className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   >
-                    {subject === 'math' ? (
-                      <>
-                        <option value="I. 도형의 방정식">1단원: I. 도형의 방정식</option>
-                        <option value="II. 집합과 명제">2단원: II. 집합과 명제</option>
-                        <option value="III. 함수와 그래프">3단원: III. 함수와 그래프</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="I. 변화와 다양성">1단원: I. 변화와 다양성</option>
-                        <option value="II. 환경과 에너지">2단원: II. 환경과 에너지</option>
-                        <option value="III. 과학과 미래 사회">3단원: III. 과학과 미래 사회</option>
-                      </>
-                    )}
+                    {curriculumChapters.map((ch) => (
+                      <option key={ch.id} value={ch.id}>
+                        {ch.chapterNumber}단원: {ch.chapterName}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">세부 단원명</label>
-                    <input
-                      type="text"
-                      placeholder="예: 2. 원의 방정식"
-                      value={newUnitName}
-                      onChange={(e) => setNewUnitName(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">문제 분류</label>
-                    <select
-                      value={newProbType}
-                      onChange={(e) => setNewProbType(e.target.value as any)}
-                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    >
-                      <option value="중단원 마무리">중단원 마무리</option>
-                      <option value="대단원 평가">대단원 평가</option>
-                      <option value="발전/심화 문제">발전/심화 문제</option>
-                      <option value="개념 예제">개념 예제</option>
-                      <option value="확인 문제">확인 문제</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">교과서 페이지</label>
-                    <input
-                      type="number"
-                      placeholder="예: 52"
-                      value={newPageNum}
-                      onChange={(e) => setNewPageNum(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">문제 번호</label>
-                    <input
-                      type="text"
-                      placeholder="예: 중단원 마무리 03번"
-                      value={newProbNum}
-                      onChange={(e) => setNewProbNum(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">문제 내용</label>
-                  <textarea
-                    placeholder="교과서 문제 지문을 입력해주세요..."
-                    value={newProbText}
-                    onChange={(e) => setNewProbText(e.target.value)}
-                    rows={3}
-                    required
-                    className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">1단계 풀이 (핵심 식 & 공식)</label>
-                  <textarea
-                    placeholder="적용 공식 및 식 세우기..."
-                    value={newStep1}
-                    onChange={(e) => setNewStep1(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">2단계 풀이 (식 전개 및 도출)</label>
-                  <textarea
-                    placeholder="풀이 전개 과정을 입력하세요..."
-                    value={newStep2}
-                    onChange={(e) => setNewStep2(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">최종 정답</label>
-                  <input
-                    type="text"
-                    placeholder="예: k = 4, (2, -3)"
-                    value={newFinalAns}
-                    onChange={(e) => setNewFinalAns(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-
-                {/* Solution Photo Attachment */}
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    손글씨 풀이 / 해설 사진 첨부 (선택)
+                  <label className="text-[11px] font-black text-slate-700 block mb-1">
+                    2. 등록할 중단원 / 대단원 평가 선택
                   </label>
-                  {newSolutionImage ? (
-                    <div className="relative rounded-2xl border-2 border-amber-300 bg-slate-900 p-2 overflow-hidden flex flex-col items-center">
-                      <img
-                        src={newSolutionImage}
-                        alt="풀이 첨부 사진"
-                        className="max-h-48 rounded-xl object-contain w-full"
+                  {(() => {
+                    const targetCh = curriculumChapters.find((c) => c.id === modalChapterId) || curriculumChapters[0];
+                    return (
+                      <select
+                        value={modalSubUnitId}
+                        onChange={(e) => {
+                          const suId = e.target.value;
+                          setModalSubUnitId(suId);
+                          const targetSub =
+                            targetCh.grandAssessment.id === suId
+                              ? targetCh.grandAssessment
+                              : targetCh.subUnits.find((s) => s.id === suId) || targetCh.subUnits[0];
+                          const count = getSubUnitCount(targetCh, targetSub);
+                          const nextNum = count + 1;
+                          setNewProbNum(nextNum < 10 ? `0${nextNum}번` : `${nextNum}번`);
+                          if (targetSub.category === '대단원 평가') {
+                            setNewProbType('대단원 평가');
+                          } else {
+                            setNewProbType('중단원 마무리');
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      >
+                        {targetCh.subUnits.map((su) => {
+                          const cnt = getSubUnitCount(targetCh, su);
+                          return (
+                            <option key={su.id} value={su.id}>
+                              [중단원] {su.title} (현재 {cnt}문제 수록)
+                            </option>
+                          );
+                        })}
+                        <option value={targetCh.grandAssessment.id}>
+                          [대단원] {targetCh.grandAssessment.title} (현재 {getSubUnitCount(targetCh, targetCh.grandAssessment)}문제 수록)
+                        </option>
+                      </select>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Mode 1: Single / Continuous Problem Form */}
+              {addProblemModalMode === 'single' && (
+                <form onSubmit={handleCreateProblemSingle} className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3.5">
+                  {/* Toast notification banner */}
+                  {successToastMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3 bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-md flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-emerald-100" />
+                        <span>{successToastMessage}</span>
+                      </div>
+                      <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">
+                        총 {recentlyAddedCount}개 등록 완료
+                      </span>
+                    </motion.div>
+                  )}
+
+                  {/* Problem Type & Difficulty & Page & Problem Number */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">문제 분류</label>
+                      <select
+                        value={newProbType}
+                        onChange={(e) => setNewProbType(e.target.value as any)}
+                        className="w-full px-2.5 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      >
+                        <option value="중단원 마무리">중단원 마무리</option>
+                        <option value="대단원 평가">대단원 평가</option>
+                        <option value="발전/심화 문제">발전/심화 문제</option>
+                        <option value="개념 예제">개념 예제</option>
+                        <option value="확인 문제">확인 문제</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">난이도</label>
+                      <select
+                        value={newProbDifficulty}
+                        onChange={(e) => setNewProbDifficulty(e.target.value as any)}
+                        className="w-full px-2.5 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      >
+                        <option value="쉬움">🟢 쉬움</option>
+                        <option value="보통">🟡 보통</option>
+                        <option value="도전">🟠 도전</option>
+                        <option value="심화">🔴 심화</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">교과서 쪽수</label>
+                      <input
+                        type="number"
+                        placeholder="예: 42"
+                        value={newPageNum}
+                        onChange={(e) => setNewPageNum(e.target.value)}
+                        required
+                        className="w-full px-2.5 py-2 bg-white rounded-xl border border-amber-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-400"
                       />
-                      <div className="flex items-center gap-2 mt-2">
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">문제 번호</label>
+                      <input
+                        type="text"
+                        placeholder="예: 01번"
+                        value={newProbNum}
+                        onChange={(e) => setNewProbNum(e.target.value)}
+                        required
+                        className="w-full px-2.5 py-2 bg-white rounded-xl border border-amber-200 text-xs font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Problem Text */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 block">문제 본문 지문</label>
+                      <span className="text-[10px] text-amber-700 font-bold">* 필수 입력</span>
+                    </div>
+                    <textarea
+                      placeholder="교과서 문제 지문과 수식(f(x), 좌표, 조건 등)을 입력해주세요..."
+                      value={newProbText}
+                      onChange={(e) => setNewProbText(e.target.value)}
+                      rows={3}
+                      required
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  {/* Step 1 & Step 2 Solutions */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        1단계 풀이 (핵심 공식 & 식 세우기)
+                      </label>
+                      <textarea
+                        placeholder="예: 점과 직선 사이의 거리 공식 d = |ax1 + by1 + c| / √(a² + b²) 적용..."
+                        value={newStep1}
+                        onChange={(e) => setNewStep1(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        2단계 풀이 (식 전개 & 정리 과정)
+                      </label>
+                      <textarea
+                        placeholder="예: 방정식을 대입하여 계산하면 k = 4 또는 k = -4가 도출됩니다..."
+                        value={newStep2}
+                        onChange={(e) => setNewStep2(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Final Answer */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 block">최종 정답</label>
+                      <span className="text-[10px] text-amber-700 font-bold">* 필수 입력</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="예: k = 4, x + 2y - 5 = 0"
+                      value={newFinalAns}
+                      onChange={(e) => setNewFinalAns(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  {/* Solution Photo Attachment */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      손글씨 해설 / 그래프 풀이 사진 첨부 (선택)
+                    </label>
+                    {newSolutionImage ? (
+                      <div className="relative rounded-2xl border-2 border-amber-300 bg-slate-900 p-2 overflow-hidden flex flex-col items-center">
+                        <img
+                          src={newSolutionImage}
+                          alt="풀이 첨부 사진"
+                          className="max-h-40 rounded-xl object-contain w-full"
+                        />
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setZoomImage(newSolutionImage)}
+                            className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                          >
+                            <Maximize2 className="w-3 h-3" /> 크게 보기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewSolutionImage(null)}
+                            className="px-3 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> 삭제
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setZoomImage(newSolutionImage)}
-                          className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="flex-1 py-2 px-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-2xs"
                         >
-                          <Maximize2 className="w-3 h-3" /> 크게 보기
+                          <Camera className="w-4 h-4 text-amber-600" />
+                          <span>카메라 촬영</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setNewSolutionImage(null)}
-                          className="px-3 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-2xs"
                         >
-                          <Trash2 className="w-3 h-3" /> 삭제
+                          <Upload className="w-4 h-4 text-slate-500" />
+                          <span>사진 파일 찾기</span>
                         </button>
                       </div>
+                    )}
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFileRead(file);
+                      }}
+                      className="hidden"
+                    />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFileRead(file);
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Dream Tip */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      풀이 핵심 팁 & 실수 방지 포인트 (선택)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 분모가 0이 되지 않도록 범위를 먼저 점검하세요!"
+                      value={newTip}
+                      onChange={(e) => setNewTip(e.target.value)}
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  {/* Continuous Add Toggle Option */}
+                  <div className="p-3 bg-blue-50/80 rounded-2xl border border-blue-200 flex items-center justify-between gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={continuousAdd}
+                        onChange={(e) => setContinuousAdd(e.target.checked)}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <div>
+                        <span className="text-xs font-black text-blue-950 block">
+                          연속 등록 모드 활성화 (추천)
+                        </span>
+                        <span className="text-[10px] text-blue-700 font-medium">
+                          등록 후 창이 닫히지 않고 다음 문제 번호로 자동 세팅되어 연속으로 입력할 수 있습니다.
+                        </span>
+                      </div>
+                    </label>
+                    {recentlyAddedCount > 0 && (
+                      <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-lg shrink-0">
+                        {recentlyAddedCount}개 등록됨
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bottom Action Buttons */}
+                  <div className="pt-2 border-t border-amber-200 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddProblemModal(false)}
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
+                    >
+                      {recentlyAddedCount > 0 ? '등록 완료 후 닫기' : '취소'}
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl text-xs font-black shadow-md hover:from-amber-600 hover:to-orange-600 active:scale-95 flex items-center gap-1.5"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>{continuousAdd ? '✨ 문제 등록 및 다음 문제 작성' : '등록 완료'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Mode 2: Batch Multi-Problem Multi-Add Form */}
+              {addProblemModalMode === 'batch' && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Batch Guidance Header */}
+                  <div className="p-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📚</span>
+                      <div>
+                        <span className="text-xs font-black text-blue-950 block">
+                          한 단원에 여러 문제를 카드별로 작성하여 한 번에 등록합니다.
+                        </span>
+                        <span className="text-[10px] text-blue-700">
+                          아래 카드에 문제와 정답을 채우고 [일괄 등록] 버튼을 누르면 단원에 모든 문제가 즉시 반영됩니다.
+                        </span>
+                      </div>
                     </div>
-                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleAddBatchDraftRow}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-sm flex items-center gap-1 shrink-0 active:scale-95 transition-all"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>+ 문제 카드 추가</span>
+                    </button>
+                  </div>
+
+                  {/* Problem Cards List */}
+                  <div className="p-3 sm:p-4 overflow-y-auto flex-1 space-y-4">
+                    {batchDrafts.map((draft, idx) => (
+                      <div
+                        key={draft.tempId}
+                        className="p-3.5 sm:p-4 bg-white rounded-2xl border-2 border-amber-300 shadow-sm space-y-3 relative group"
+                      >
+                        {/* Card Header Row */}
+                        <div className="flex items-center justify-between pb-2 border-b border-amber-100 flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-blue-600 text-white text-xs font-black flex items-center justify-center">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs font-black text-slate-800">
+                              문제 카드 #{idx + 1}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-bold text-slate-500">페이지:</span>
+                              <input
+                                type="number"
+                                placeholder="쪽수"
+                                value={draft.pageNumber}
+                                onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'pageNumber', e.target.value)}
+                                className="w-16 px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-xs font-bold"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-bold text-slate-500">문제번호:</span>
+                              <input
+                                type="text"
+                                placeholder="01번"
+                                value={draft.problemNumber}
+                                onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'problemNumber', e.target.value)}
+                                className="w-20 px-2 py-1 bg-blue-50 rounded-lg border border-blue-200 text-xs font-black text-blue-800"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBatchDraftRow(draft.tempId)}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                              title="이 문제 카드 삭제"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Difficulty & Problem Type */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">난이도</label>
+                            <select
+                              value={draft.difficulty}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'difficulty', e.target.value)}
+                              className="w-full px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-xs font-bold"
+                            >
+                              <option value="쉬움">🟢 쉬움</option>
+                              <option value="보통">🟡 보통</option>
+                              <option value="도전">🟠 도전</option>
+                              <option value="심화">🔴 심화</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-0.5">분류</label>
+                            <select
+                              value={draft.problemType}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'problemType', e.target.value)}
+                              className="w-full px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-xs font-bold"
+                            >
+                              <option value="중단원 마무리">중단원 마무리</option>
+                              <option value="대단원 평가">대단원 평가</option>
+                              <option value="발전/심화 문제">발전/심화 문제</option>
+                              <option value="개념 예제">개념 예제</option>
+                              <option value="확인 문제">확인 문제</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Problem Text */}
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                            문제 본문 지문 <span className="text-amber-600 font-black">*필수</span>
+                          </label>
+                          <textarea
+                            placeholder="문제 지문을 입력하세요..."
+                            value={draft.problemText}
+                            onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'problemText', e.target.value)}
+                            rows={2}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          />
+                        </div>
+
+                        {/* Step 1 & Step 2 */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                              1단계 풀이 (공식 및 식 세우기)
+                            </label>
+                            <textarea
+                              placeholder="공식 적용 과정..."
+                              value={draft.step1}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'step1', e.target.value)}
+                              rows={2}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                              2단계 풀이 (전개 및 도출 과정)
+                            </label>
+                            <textarea
+                              placeholder="계산 및 풀이 과정..."
+                              value={draft.step2}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'step2', e.target.value)}
+                              rows={2}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Final Answer & Tip */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                              최종 정답 <span className="text-amber-600 font-black">*필수</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="예: k = 4"
+                              value={draft.finalAnswer}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'finalAnswer', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-bold text-blue-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                              풀이 팁 (선택)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="핵심 팁"
+                              value={draft.dreamTip}
+                              onChange={(e) => handleUpdateBatchDraftField(draft.tempId, 'dreamTip', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Image Upload for Batch Card */}
+                        <div className="pt-1 flex items-center justify-between">
+                          {draft.solutionImage ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                                ✓ 사진 첨부됨
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setZoomImage(draft.solutionImage)}
+                                className="text-[11px] font-bold text-blue-600 hover:underline"
+                              >
+                                미리보기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateBatchDraftField(draft.tempId, 'solutionImage', null)}
+                                className="text-[11px] font-bold text-rose-600 hover:underline"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveBatchDraftIdForImage(draft.tempId);
+                                batchImageInputRef.current?.click();
+                              }}
+                              className="text-[11px] font-bold text-slate-600 hover:text-blue-700 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 transition-colors"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>해설 사진 첨부</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    <input
+                      ref={batchImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleBatchImageFileRead(file);
+                      }}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={handleAddBatchDraftRow}
+                      className="w-full py-3 bg-amber-50 hover:bg-amber-100 border-2 border-dashed border-amber-300 rounded-2xl text-xs font-black text-amber-900 flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <PlusCircle className="w-4 h-4 text-amber-600" />
+                      <span>+ 새 문제 카드 추가하기</span>
+                    </button>
+                  </div>
+
+                  {/* Batch Modal Footer */}
+                  <div className="p-3 sm:p-4 bg-slate-50 border-t border-amber-200 flex items-center justify-between gap-2 shrink-0">
+                    <div className="text-xs font-black text-slate-700">
+                      작성 중인 문제: <span className="text-blue-600">{batchDrafts.length}개</span>
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => cameraInputRef.current?.click()}
-                        className="flex-1 py-2 px-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-2xs"
+                        onClick={() => setShowAddProblemModal(false)}
+                        className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold"
                       >
-                        <Camera className="w-4 h-4 text-amber-600" />
-                        <span>카메라로 바로 촬영</span>
+                        취소
                       </button>
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-2xs"
+                        onClick={handleCreateProblemBatch}
+                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md active:scale-95 flex items-center gap-1.5"
                       >
-                        <Upload className="w-4 h-4 text-slate-500" />
-                        <span>사진 파일 찾기</span>
+                        <Layers className="w-4 h-4" />
+                        <span>🚀 총 {batchDrafts.length}개 문제 일괄 등록 완료</span>
                       </button>
                     </div>
-                  )}
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleImageFileRead(file);
-                    }}
-                    className="hidden"
-                  />
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleImageFileRead(file);
-                    }}
-                    className="hidden"
-                  />
+                  </div>
                 </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">친구들을 위한 풀이 팁 (선택)</label>
-                  <input
-                    type="text"
-                    placeholder="예: 상수항 부호 실수에 주의하세요!"
-                    value={newTip}
-                    onChange={(e) => setNewTip(e.target.value)}
-                    className="w-full px-3 py-2 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  />
-                </div>
-
-                <div className="pt-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddProblemModal(false)}
-                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200"
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-amber-500 text-white rounded-xl text-xs font-black shadow-md hover:bg-amber-600 active:scale-95"
-                  >
-                    등록 완료
-                  </button>
-                </div>
-              </form>
+              )}
             </motion.div>
           </div>
         )}

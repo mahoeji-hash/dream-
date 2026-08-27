@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Bookmark, BookmarkCheck, ThumbsUp, MessageSquarePlus, Sparkles, HelpCircle, Share2, Lightbulb, Image as ImageIcon, Maximize2 } from 'lucide-react';
+import {
+  X,
+  CheckCircle2,
+  Bookmark,
+  BookmarkCheck,
+  MessageSquarePlus,
+  Sparkles,
+  HelpCircle,
+  Share2,
+  Lightbulb,
+  Image as ImageIcon,
+  Maximize2,
+  TrendingUp,
+  Heart,
+  PenTool,
+  Trash2,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { ProblemItem, TextbookInfo, PeerTip, StudentSolution, UserRole } from '../types';
+import { ProblemItem, TextbookInfo, StudentSolution, UserRole } from '../types';
 import { ProblemDiagram } from './ProblemDiagram';
 import { DrawScratchpad } from './DrawScratchpad';
 
@@ -14,6 +30,7 @@ interface ProblemDetailModalProps {
   onToggleBookmark: (problemId: string) => void;
   onClose: () => void;
   onAskAIAboutProblem: (problem: ProblemItem) => void;
+  onDeleteProblem?: (problemId: string) => void;
 }
 
 export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
@@ -24,20 +41,20 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
   onToggleBookmark,
   onClose,
   onAskAIAboutProblem,
+  onDeleteProblem,
 }) => {
-  const [activeTab, setActiveTab] = useState<'solution' | 'peer_tips' | 'my_note'>('solution');
+  const [activeTab, setActiveTab] = useState<'solution' | 'my_note'>('solution');
   const [isSolved, setIsSolved] = useState(false);
-  const [peerTips, setPeerTips] = useState<PeerTip[]>(problem.peerTips || []);
   const [studentSolutions, setStudentSolutions] = useState<StudentSolution[]>(problem.studentSolutions || []);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // New tip form state
-  const [showAddTip, setShowAddTip] = useState(false);
-  const [newTipText, setNewTipText] = useState('');
-  const [newTipAuthor, setNewTipAuthor] = useState('');
+  // In-line interactive graph scratchpad for step-by-step solution tab
+  const [showStepScratchpad, setShowStepScratchpad] = useState(false);
 
   // New student solution form
   const [showAddSolution, setShowAddSolution] = useState(false);
+  const [newSolutionAuthor, setNewSolutionAuthor] = useState('');
   const [newSolutionDesc, setNewSolutionDesc] = useState('');
   const [savedDrawing, setSavedDrawing] = useState('');
 
@@ -55,28 +72,10 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
     }
   };
 
-  const handleLikeTip = (tipId: string) => {
-    setPeerTips((prev) =>
-      prev.map((t) => (t.id === tipId ? { ...t, likes: t.likes + 1, isHelpful: true } : t))
+  const handleLikeSolution = (solId: string) => {
+    setStudentSolutions((prev) =>
+      prev.map((s) => (s.id === solId ? { ...s, likes: s.likes + 1 } : s))
     );
-  };
-
-  const handleAddTip = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTipText.trim()) return;
-
-    const newTip: PeerTip = {
-      id: `pt-${Date.now()}`,
-      author: newTipAuthor.trim() || '우리반 친구',
-      authorBadge: '새로운 꿀팁',
-      tip: newTipText.trim(),
-      likes: 1,
-      isHelpful: false,
-    };
-
-    setPeerTips([newTip, ...peerTips]);
-    setNewTipText('');
-    setShowAddTip(false);
   };
 
   const handleAddSolution = (e: React.FormEvent) => {
@@ -85,8 +84,8 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
 
     const newSol: StudentSolution = {
       id: `ss-${Date.now()}`,
-      author: '나의 풀이 노트',
-      authorSchool: '내 교과서 풀이',
+      author: newSolutionAuthor.trim() || (userRole === 'admin' ? '선생님 풀이' : '우리반 친구 풀이'),
+      authorSchool: '대구화원고',
       date: new Date().toLocaleDateString('ko-KR'),
       description: newSolutionDesc.trim(),
       drawingImage: savedDrawing || undefined,
@@ -94,6 +93,7 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
     };
 
     setStudentSolutions([newSol, ...studentSolutions]);
+    setNewSolutionAuthor('');
     setNewSolutionDesc('');
     setSavedDrawing('');
     setShowAddSolution(false);
@@ -132,6 +132,40 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {userRole === 'admin' && onDeleteProblem && (
+              confirmDelete ? (
+                <div className="flex items-center gap-1 bg-rose-600/90 text-white p-1 rounded-xl shadow-md animate-in fade-in">
+                  <span className="text-[11px] font-black px-1">삭제할까요?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteProblem(problem.id);
+                      onClose();
+                    }}
+                    className="px-2 py-0.5 bg-white text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-black shadow-xs"
+                  >
+                    삭제
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="px-1.5 py-0.5 bg-rose-800/80 hover:bg-rose-800 text-white rounded-lg text-xs font-bold"
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="p-2 rounded-xl bg-rose-600/80 hover:bg-rose-600 text-white transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                  title="관리자 권한으로 문제 삭제"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="text-xs font-bold hidden sm:inline">문제 삭제</span>
+                </button>
+              )
+            )}
             <button
               onClick={() => onToggleBookmark(problem.id)}
               className={`p-2 rounded-xl transition-all ${
@@ -164,18 +198,6 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
             }`}
           >
             <span>📝 단계별 풀이</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('peer_tips')}
-            className={`pb-2.5 px-3 text-xs sm:text-sm font-black flex items-center gap-1.5 transition-all border-b-2 shrink-0 ${
-              activeTab === 'peer_tips'
-                ? 'border-amber-600 text-amber-700 bg-white/70 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <span>💡 친구 꿀팁 ({peerTips.length})</span>
           </button>
 
           <button
@@ -225,14 +247,51 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
                   <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                   정확하고 알기 쉬운 단계별 풀이
                 </h3>
-                <button
-                  onClick={() => onAskAIAboutProblem(problem)}
-                  className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold hover:bg-amber-200 flex items-center gap-1 transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                  AI에게 질문하기
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowStepScratchpad(!showStepScratchpad)}
+                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 transition-all shadow-2xs active:scale-95 ${
+                      showStepScratchpad
+                        ? 'bg-blue-600 text-white shadow-blue-500/20'
+                        : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                    }`}
+                  >
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span>{showStepScratchpad ? '연습장 닫기' : '📊 실시간 그래프 & 연습장 열기'}</span>
+                  </button>
+                  <button
+                    onClick={() => onAskAIAboutProblem(problem)}
+                    className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold hover:bg-amber-200 flex items-center gap-1 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    AI에게 질문하기
+                  </button>
+                </div>
               </div>
+
+              {/* Embedded Live Graph & Scratchpad (Step-by-step assistant) */}
+              <AnimatePresence>
+                {showStepScratchpad && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-sky-50/90 rounded-2xl border-2 border-blue-300 shadow-sm space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-blue-950">
+                        <TrendingUp className="w-4 h-4 text-blue-600" />
+                        <span>실시간 수학 그래프 & 좌표평면 연습장</span>
+                      </div>
+                      <span className="text-[11px] text-blue-700 font-bold">
+                        풀이를 보면서 자유롭게 함수 그래프를 그리고 계산해보세요!
+                      </span>
+                    </div>
+                    <DrawScratchpad height={220} showFunctionPlotterDefault={true} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Attached Problem / Solution Photo */}
               {problem.solutionImage && (
@@ -324,112 +383,7 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: PEER TIPS */}
-          {activeTab === 'peer_tips' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800">
-                    우리 친구들이 직접 남긴 꿀팁 & 실수 방지 비법
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    친구들의 풀이 노하우를 보고 도움을 받았다면 따봉을 눌러주세요!
-                  </p>
-                </div>
-                {userRole === 'admin' && (
-                  <button
-                    onClick={() => setShowAddTip(!showAddTip)}
-                    className="px-3 py-1.5 rounded-full bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 flex items-center gap-1 shadow-sm transition-colors"
-                  >
-                    <MessageSquarePlus className="w-3.5 h-3.5" />
-                    꿀팁 남기기 (관리자)
-                  </button>
-                )}
-              </div>
-
-              {/* Add Tip Form */}
-              <AnimatePresence>
-                {showAddTip && (
-                  <motion.form
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    onSubmit={handleAddTip}
-                    className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 space-y-2.5"
-                  >
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="닉네임 (예: 화원고2반)"
-                        value={newTipAuthor}
-                        onChange={(e) => setNewTipAuthor(e.target.value)}
-                        className="w-1/3 px-3 py-1.5 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
-                      <input
-                        type="text"
-                        placeholder="이 문제 풀 때 기억해야 할 핵심 꿀팁을 적어주세요!"
-                        value={newTipText}
-                        onChange={(e) => setNewTipText(e.target.value)}
-                        required
-                        className="flex-1 px-3 py-1.5 bg-white rounded-xl border border-amber-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      />
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowAddTip(false)}
-                        className="px-3 py-1 rounded-lg text-xs text-slate-600 hover:bg-slate-200"
-                      >
-                        취소
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-sm"
-                      >
-                        등록하기
-                      </button>
-                    </div>
-                  </motion.form>
-                )}
-              </AnimatePresence>
-
-              {/* Tip list */}
-              <div className="space-y-2.5">
-                {peerTips.map((tip) => (
-                  <div
-                    key={tip.id}
-                    className="p-3.5 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex items-start justify-between gap-3 hover:border-amber-300 transition-colors"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-800">{tip.author}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
-                          {tip.authorBadge}
-                        </span>
-                      </div>
-                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
-                        {tip.tip}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => handleLikeTip(tip.id)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                        tip.isHelpful
-                          ? 'bg-amber-500 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700'
-                      }`}
-                    >
-                      <ThumbsUp className="w-3.5 h-3.5" />
-                      <span>{tip.likes}</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: STUDENT SOLUTIONS / SCRATCHPAD */}
+          {/* TAB 2: STUDENT SOLUTIONS / SCRATCHPAD */}
           {activeTab === 'my_note' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -438,21 +392,20 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
                     우리가 직접 손으로 적은 풀이 & 연습장
                   </h3>
                   <p className="text-xs text-slate-500">
-                    친구들과 나누고 싶은 나만의 다른 풀이법이나 손글씨 수식을 공유해보세요!
+                    친구들과 나누고 싶은 나만의 다른 풀이법이나 손글씨 수식, 그래프를 공유해보세요!
                   </p>
                 </div>
-                {userRole === 'admin' && (
-                  <button
-                    onClick={() => setShowAddSolution(!showAddSolution)}
-                    className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 flex items-center gap-1 shadow-sm transition-colors"
-                  >
-                    <MessageSquarePlus className="w-3.5 h-3.5" />
-                    풀이 노트 등록 (관리자)
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddSolution(!showAddSolution)}
+                  className="px-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+                >
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>{showAddSolution ? '작성 닫기' : '✏️ 풀이 & 그래프 작성하기'}</span>
+                </button>
               </div>
 
-              {/* Add Solution Form with Drawing Canvas */}
+              {/* Add Solution Form with Drawing & Graph Canvas */}
               <AnimatePresence>
                 {showAddSolution && (
                   <motion.form
@@ -460,36 +413,61 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
                     onSubmit={handleAddSolution}
-                    className="p-4 bg-emerald-50/70 rounded-2xl border-2 border-emerald-200 space-y-3"
+                    className="p-4 bg-emerald-50/70 rounded-3xl border-2 border-emerald-300 shadow-md space-y-3"
                   >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                        <PenTool className="w-3.5 h-3.5 text-emerald-700" />
+                        나만의 수학 풀이 & 그래프 작성
+                      </span>
+                      <span className="text-[11px] text-emerald-700 font-bold">
+                        수식 설명과 함께 그래프를 그릴 수 있어요!
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="작성자 이름 또는 닉네임 (예: 화원고 2반 수학천재)"
+                        value={newSolutionAuthor}
+                        onChange={(e) => setNewSolutionAuthor(e.target.value)}
+                        className="w-full sm:w-1/2 px-3 py-2 bg-white rounded-xl border border-emerald-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
                     <textarea
-                      placeholder="이 문제의 다른 풀이나 내가 푼 풀이 노하우를 적어주세요."
+                      placeholder="이 문제의 핵심 아이디어, 풀이 과정, 주의할 점을 적어주세요."
                       value={newSolutionDesc}
                       onChange={(e) => setNewSolutionDesc(e.target.value)}
                       rows={2}
-                      className="w-full px-3 py-2 bg-white rounded-xl border border-emerald-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                      className="w-full px-3 py-2 bg-white rounded-xl border border-emerald-300 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
 
                     <div>
-                      <span className="text-xs font-bold text-emerald-900 block mb-1">
-                        🎨 수식이나 그래프 직접 그리기 (선택)
+                      <span className="text-xs font-bold text-emerald-900 block mb-1.5 flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+                        좌표평면 & 함수 그래프 / 수식 그리기 (선택)
                       </span>
-                      <DrawScratchpad onSaveDrawing={setSavedDrawing} height={140} />
+                      <DrawScratchpad
+                        onSaveDrawing={setSavedDrawing}
+                        height={220}
+                        showFunctionPlotterDefault={true}
+                      />
                     </div>
 
                     <div className="flex justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => setShowAddSolution(false)}
-                        className="px-3 py-1.5 rounded-lg text-xs text-slate-600 hover:bg-slate-200"
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200"
                       >
                         취소
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                        className="px-5 py-1.5 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm active:scale-95 transition-all"
                       >
-                        풀이 등록하기
+                        풀이 등록 완료 ✨
                       </button>
                     </div>
                   </motion.form>
@@ -500,7 +478,7 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
               {studentSolutions.length === 0 ? (
                 <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-slate-300">
                   <p className="text-slate-500 text-sm font-medium">
-                    아직 등록된 친구 풀이가 없어요. 내가 첫 번째 풀이를 등록해보세요! ✨
+                    아직 등록된 친구 풀이가 없어요. 내가 첫 번째 풀이와 그래프를 등록해보세요! ✨
                   </p>
                 </div>
               ) : (
@@ -508,14 +486,27 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
                   {studentSolutions.map((sol) => (
                     <div
                       key={sol.id}
-                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2.5"
+                      className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2.5 hover:border-emerald-300 transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-slate-800">{sol.author}</span>
                           <span className="text-[10px] text-slate-400 font-semibold">{sol.authorSchool} · {sol.date}</span>
+                          {sol.drawingImage && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-0.5">
+                              <TrendingUp className="w-2.5 h-2.5" /> 그래프 포함
+                            </span>
+                          )}
                         </div>
-                        <span className="text-xs text-emerald-600 font-bold">❤️ {sol.likes}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleLikeSolution(sol.id)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all active:scale-95"
+                          title="이 풀이 추천하기"
+                        >
+                          <Heart className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
+                          <span>{sol.likes}</span>
+                        </button>
                       </div>
 
                       {sol.description && (
@@ -537,9 +528,12 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
                       {sol.drawingImage && (
                         <div
                           onClick={() => setZoomImage(sol.drawingImage || null)}
-                          className="rounded-xl overflow-hidden border border-slate-200 cursor-pointer hover:opacity-95"
+                          className="group relative rounded-2xl overflow-hidden border border-slate-200 cursor-pointer hover:border-emerald-400 transition-all bg-white"
                         >
-                          <img src={sol.drawingImage} alt="학생 손글씨 풀이" className="w-full object-contain max-h-48 bg-white" />
+                          <img src={sol.drawingImage} alt="학생 손글씨 풀이 및 그래프" className="w-full object-contain max-h-56 bg-white p-1" />
+                          <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-xs text-white rounded-lg text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            <Maximize2 className="w-3 h-3" /> 크게 보기
+                          </div>
                         </div>
                       )}
                     </div>

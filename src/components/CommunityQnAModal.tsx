@@ -67,6 +67,7 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
 
   // Admin Answer Form state
   const [isAnswering, setIsAnswering] = useState(false);
+  const [confirmDeleteQ, setConfirmDeleteQ] = useState(false);
   const [answerText, setAnswerText] = useState('');
   const [answerKeyFormula, setAnswerKeyFormula] = useState('');
   const [answerTeacherTip, setAnswerTeacherTip] = useState('');
@@ -588,20 +589,39 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
 
                 <div className="flex items-center gap-2">
                   {userProfile.role === 'admin' && onDeleteQuestion && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm('이 질문을 삭제하시겠습니까? (관리자 전용)')) {
-                          onDeleteQuestion(selectedQuestion.id);
-                          setSelectedQuestion(null);
-                        }
-                      }}
-                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl flex items-center gap-1"
-                      title="관리자 질문 삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>삭제</span>
-                    </button>
+                    confirmDeleteQ ? (
+                      <div className="flex items-center gap-1 bg-rose-100 px-2 py-1 rounded-xl border border-rose-300 animate-in fade-in">
+                        <span className="text-[11px] font-black text-rose-800">정말 삭제?</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteQuestion(selectedQuestion.id);
+                            setSelectedQuestion(null);
+                            setConfirmDeleteQ(false);
+                          }}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black shadow-xs"
+                        >
+                          삭제
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteQ(false)}
+                          className="px-1.5 py-0.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-300"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteQ(true)}
+                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded-xl flex items-center gap-1"
+                        title="관리자 질문 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>삭제</span>
+                      </button>
+                    )
                   )}
 
                   <button

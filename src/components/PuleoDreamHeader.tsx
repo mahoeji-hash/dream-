@@ -88,20 +88,18 @@ export const PuleoDreamHeader: React.FC<PuleoDreamHeaderProps> = ({
         id="puleo-dream-logo-container"
         onClick={onGoHome}
         className={`flex flex-col items-center cursor-pointer transition-transform ${
-          isHome ? 'my-2 scale-100' : 'my-1 scale-90'
+          isHome ? 'my-2 scale-100' : 'my-1 scale-95'
         }`}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
       >
-        {/* Roof Structure with Sprout */}
-        <div className="relative flex flex-col items-center -mb-2 z-20">
-          {/* Sprout */}
-          <div className="flex items-center justify-center text-emerald-500 text-lg mb-[-4px] animate-bounce">
+        {/* Cute Roof & Sprout Emblem */}
+        <div className="flex flex-col items-center mb-1">
+          <div className="flex items-center justify-center text-emerald-500 text-base animate-bounce">
             🌱
           </div>
-          {/* Blue House/Book Roof */}
-          <div className="relative flex items-center justify-center">
-            <svg width="68" height="34" viewBox="0 0 68 34" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-md">
+          <div className="flex items-center justify-center">
+            <svg width="54" height="24" viewBox="0 0 68 34" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-sm">
               <path
                 d="M34 4L6 28C4.5 29.5 5.5 32 7.5 32H60.5C62.5 32 63.5 29.5 62 28L34 4Z"
                 fill="#1E40AF"
@@ -110,59 +108,35 @@ export const PuleoDreamHeader: React.FC<PuleoDreamHeaderProps> = ({
                 d="M34 6L8 28H60L34 6Z"
                 fill="#2563EB"
               />
-              <circle cx="34" cy="18" r="4" fill="#FEF08A" />
+              <circle cx="34" cy="18" r="3.5" fill="#FEF08A" />
             </svg>
           </div>
         </div>
 
-        {/* Cloud Badge with "풀어 DREAM" */}
-        <div className="relative px-8 py-3 bg-white/95 backdrop-blur-sm rounded-[32px] border-4 border-white shadow-[0_10px_25px_rgba(37,99,235,0.12),0_4px_10px_rgba(245,158,11,0.08)] flex flex-col items-center justify-center z-10">
-          {/* Decorative Stars / Sparkles */}
+        {/* Main Logo Card Badge */}
+        <div className="relative px-6 sm:px-9 py-3 bg-white/95 backdrop-blur-sm rounded-[28px] border-[3px] border-white shadow-[0_10px_25px_rgba(37,99,235,0.12),0_4px_10px_rgba(245,158,11,0.08)] flex flex-col items-center justify-center z-10">
+          {/* Subtle Decorative Stars */}
           <div className="absolute -top-2 -left-2 text-amber-400">
-            <Star className="w-5 h-5 fill-amber-400 text-amber-400 drop-shadow-sm animate-pulse" />
+            <Star className="w-5 h-5 fill-amber-400 text-amber-400 drop-shadow-xs animate-pulse" />
           </div>
-          <div className="absolute -top-1 -right-2 text-amber-400">
-            <Star className="w-4 h-4 fill-amber-300 text-amber-300 drop-shadow-sm" />
-          </div>
-          <div className="absolute bottom-2 -left-3 text-sky-400 opacity-80">
-            <Sparkles className="w-4 h-4" />
+          <div className="absolute -top-1.5 -right-2 text-amber-400">
+            <Star className="w-4 h-4 fill-amber-300 text-amber-300 drop-shadow-xs" />
           </div>
 
-          {/* Unified Color Typography: "풀어 DREAM" in matching vibrant royal blue with 3D depth */}
-          <div className="flex flex-col items-center justify-center">
-            {/* Top Line: "풀어" & "DREAM" with matching identical color and harmonious styling */}
-            <div className="flex items-center justify-center gap-2">
-              <span className="text-amber-400 text-xs font-bold animate-pulse">✨</span>
-              <h1
-                className="text-3xl sm:text-4xl font-extrabold tracking-wider"
-                style={{
-                  color: '#2563EB',
-                  fontFamily: "'Pretendard', 'GmarketSans', sans-serif",
-                  textShadow: '0 3px 0 #1D4ED8, 0 6px 14px rgba(37, 99, 235, 0.25)',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                풀어
-              </h1>
-              <span
-                className="text-3xl sm:text-4xl font-black tracking-wider uppercase"
-                style={{
-                  color: '#2563EB',
-                  fontFamily: "'Fredoka', 'Pretendard', sans-serif",
-                  textShadow: '0 3px 0 #1D4ED8, 0 6px 14px rgba(37, 99, 235, 0.25)',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                DREAM
-              </span>
-              <span className="text-amber-400 text-xs font-bold animate-pulse">✨</span>
-            </div>
+          {/* Typography: "풀어" + "DREAM" with spacious gap, distinct fonts, and zero collision */}
+          <div className="flex items-center justify-center gap-3 sm:gap-4 my-0.5 select-none whitespace-nowrap">
+            <span className="text-3xl sm:text-4xl text-blue-600 font-logo-kr tracking-wide leading-none pt-0.5">
+              풀어
+            </span>
+            <span className="px-3.5 py-1 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-logo-en font-black text-xl sm:text-2xl tracking-widest leading-none shadow-md shadow-blue-500/25">
+              DREAM
+            </span>
           </div>
 
-          <div className="mt-1 flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-50/80 border border-blue-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-            <p className="text-[11px] text-blue-800 font-bold tracking-tight">
-              수학 · 과학 교과서 풀이 & 질문 해결소
+          <div className="mt-2 flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-50/90 border border-blue-200/60 shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping"></span>
+            <p className="text-[11px] sm:text-xs text-blue-900 font-bold tracking-tight">
+              수학 · 과학 교과서 풀이 & 맞춤 질문 해결소
             </p>
           </div>
         </div>

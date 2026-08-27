@@ -19,21 +19,30 @@ import {
   Trash2,
   Maximize2,
   PenTool,
+  PlusCircle,
 } from 'lucide-react';
 import { UnitQuiz, QuizQuestion } from '../data/mockUnitTests';
 import { QuizAttemptRecord, QuizWrongAnswer } from '../types';
 import { DrawScratchpad } from './DrawScratchpad';
 
+const CIRCLED_NUMBERS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+
 interface UnitTestModalProps {
   quiz: UnitQuiz;
+  userRole?: 'student' | 'admin';
   onClose: () => void;
   onCompleteQuiz?: (score: number, total: number, attempt?: QuizAttemptRecord) => void;
+  onDeleteQuestion?: (quizId: string, questionId: string) => void;
+  onOpenAddQuestion?: (quizId: string) => void;
 }
 
 export const UnitTestModal: React.FC<UnitTestModalProps> = ({
   quiz,
+  userRole = 'student',
   onClose,
   onCompleteQuiz,
+  onDeleteQuestion,
+  onOpenAddQuestion,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
@@ -50,12 +59,23 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
 
+  // In-app deletion confirmation & toast notification (large prominent modal dialog)
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ id: string; num: number; text: string } | null>(null);
+  const [toastNotice, setToastNotice] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const totalQ = quiz.questions?.length || 0;
-  const currentQ = totalQ > 0 ? quiz.questions[currentIndex] : null;
-  const isLast = currentIndex === totalQ - 1;
+  const currentQ = totalQ > 0 && currentIndex < totalQ ? quiz.questions[currentIndex] : null;
+  const isLast = totalQ > 0 && currentIndex === totalQ - 1;
+
+  // Ensure currentIndex stays within bounds if a question gets deleted
+  useEffect(() => {
+    if (totalQ > 0 && currentIndex >= totalQ) {
+      setCurrentIndex(Math.max(0, totalQ - 1));
+    }
+  }, [totalQ, currentIndex]);
 
   const calculateScore = () => {
     let correctCount = 0;
@@ -300,6 +320,14 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
           </button>
         </div>
 
+        {/* Toast Notice Banner */}
+        {toastNotice && (
+          <div className="bg-emerald-600 text-white text-xs font-black py-2 px-4 text-center animate-in fade-in flex items-center justify-center gap-2 shadow-inner">
+            <span>✓</span>
+            <span>{toastNotice}</span>
+          </div>
+        )}
+
         {/* Test Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-5">
           {totalQ === 0 ? (
@@ -360,9 +388,9 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
               </div>
 
               {/* Question Box */}
-              {currentQ && (
+              {currentQ ? (
                 <div className="p-4 sm:p-5 bg-white rounded-2xl border-2 border-amber-100 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className={`px-2.5 py-1 rounded-xl text-xs font-black text-white ${themeBg}`}>
                         Q{currentIndex + 1}
@@ -370,12 +398,42 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                       <span className="text-xs font-bold text-slate-500">실전 객관식 문제</span>
                     </div>
 
-                    {currentPhotos.length > 0 && (
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <Camera className="w-3 h-3 text-emerald-600" />
-                        <span>풀이 사진 {currentPhotos.length}장 첨부됨</span>
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {currentPhotos.length > 0 && (
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <Camera className="w-3 h-3 text-emerald-600" />
+                          <span>풀이 사진 {currentPhotos.length}장</span>
+                        </span>
+                      )}
+
+                      {/* Admin Quick Actions on this test question */}
+                      {userRole === 'admin' && (
+                        <div className="flex items-center gap-1.5 bg-amber-50 p-1 rounded-xl border border-amber-200">
+                          {onOpenAddQuestion && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenAddQuestion(quiz.id)}
+                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all shadow-2xs"
+                              title="새 문제 출제하기"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5" />
+                              <span>문항 추가</span>
+                            </button>
+                          )}
+                          {onDeleteQuestion && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmTarget({ id: currentQ.id, num: currentIndex + 1, text: currentQ.questionText })}
+                              className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-all"
+                              title="이 문항 삭제하기"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>문항 삭제 (선생님)</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Problem Question Image / Diagram (if attached by teacher) */}
@@ -426,6 +484,21 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                     </div>
                   )}
                 </div>
+              ) : (
+                <div className="p-8 text-center bg-white rounded-2xl border-2 border-dashed border-amber-200 space-y-3">
+                  <span className="text-3xl block">📭</span>
+                  <p className="text-sm font-bold text-slate-700">이 TEST에 등록된 문제가 없습니다.</p>
+                  {userRole === 'admin' && onOpenAddQuestion && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddQuestion(quiz.id)}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black shadow-md flex items-center justify-center gap-1.5 mx-auto"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>새 문제 출제하기</span>
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Options */}
@@ -449,13 +522,13 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                       >
                         <div className="flex items-center gap-3">
                           <span
-                            className={`w-6 h-6 rounded-full text-xs font-black flex items-center justify-center border ${
+                            className={`w-6 h-6 rounded-full text-xs font-black flex items-center justify-center border shrink-0 ${
                               isSelected
                                 ? `${themeBg} text-white border-transparent`
-                                : 'bg-slate-100 text-slate-600 border-slate-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-300'
                             }`}
                           >
-                            {optIdx + 1}
+                            {CIRCLED_NUMBERS[optIdx] || optIdx + 1}
                           </span>
                           <span>{opt}</span>
                         </div>
@@ -670,7 +743,7 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center text-white ${
+                            className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center text-white shrink-0 ${
                               isCorrect ? 'bg-emerald-600' : 'bg-rose-500'
                             }`}
                           >
@@ -680,15 +753,28 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                             {q.questionText}
                           </span>
                         </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
-                            isCorrect
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {isCorrect ? '정답 ⭕' : '오답 ❌'}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                              isCorrect
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {isCorrect ? '정답 ⭕' : '오답 ❌'}
+                          </span>
+                          {userRole === 'admin' && onDeleteQuestion && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmTarget({ id: q.id, num: idx + 1, text: q.questionText })}
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold border border-rose-200 flex items-center gap-1 transition-all"
+                              title="선생님 권한으로 문항 삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>삭제</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Question Diagram / Image if present */}
@@ -735,9 +821,16 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
 
                       <div className="text-xs space-y-1.5 bg-white p-3 rounded-xl border border-slate-100">
                         <div className="flex items-center justify-between text-slate-600">
-                          <span>내가 고른 답: <strong>{userAns !== undefined ? `${userAns + 1}번 (${q.options[userAns]})` : '선택 안함'}</strong></span>
+                          <span>
+                            내가 고른 답:{' '}
+                            <strong>
+                              {userAns !== undefined
+                                ? `${CIRCLED_NUMBERS[userAns] || userAns + 1}번 (${q.options[userAns]})`
+                                : '선택 안함'}
+                            </strong>
+                          </span>
                           <span className="text-emerald-700 font-black">
-                            정답: {q.correctIndex + 1}번 ({q.options[q.correctIndex]})
+                            정답: {CIRCLED_NUMBERS[q.correctIndex] || q.correctIndex + 1}번 ({q.options[q.correctIndex]})
                           </span>
                         </div>
 
@@ -850,6 +943,95 @@ export const UnitTestModal: React.FC<UnitTestModalProps> = ({
                 className="w-full h-auto max-h-[80vh] object-contain rounded-xl"
                 referrerPolicy="no-referrer"
               />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Prominent Large Question Deletion Confirmation Modal Dialog */}
+      <AnimatePresence>
+        {deleteConfirmTarget && (
+          <div
+            className="fixed inset-0 z-80 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setDeleteConfirmTarget(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border-2 border-rose-200 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-rose-500 text-white p-5 sm:p-6 flex items-center justify-between">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shadow-inner shrink-0">
+                    <Trash2 className="w-7 h-7 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight">선생님 권한 — 문항 영구 삭제</h3>
+                    <p className="text-xs text-rose-100 font-medium">Q{deleteConfirmTarget.num}번 문제를 완전히 삭제합니다</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmTarget(null)}
+                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-5">
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-4 flex items-start gap-3">
+                  <span className="text-2xl shrink-0">⚠️</span>
+                  <div className="text-xs sm:text-sm text-rose-900 leading-relaxed font-bold">
+                    <p className="font-black text-rose-950">정말로 이 문제를 대단원 TEST에서 삭제하시겠습니까?</p>
+                    <p className="text-rose-600 font-semibold mt-1">
+                      삭제된 문제는 즉시 시험 목록에서 완전히 제거되며 복구할 수 없습니다.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-700 flex items-center justify-between">
+                    <span className="px-2.5 py-1 bg-slate-200 text-slate-800 rounded-lg text-xs font-bold">
+                      삭제 대상: Q{deleteConfirmTarget.num}번
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">미리보기</span>
+                  </label>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs sm:text-sm text-slate-800 font-medium max-h-36 overflow-y-auto leading-relaxed whitespace-pre-wrap shadow-inner">
+                    {deleteConfirmTarget.text}
+                  </div>
+                </div>
+
+                {/* Big Action Buttons */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmTarget(null)}
+                    className="py-3.5 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-black transition-all active:scale-98"
+                  >
+                    취소하기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onDeleteQuestion && deleteConfirmTarget) {
+                        onDeleteQuestion(quiz.id, deleteConfirmTarget.id);
+                        setToastNotice(`Q${deleteConfirmTarget.num}번 문항이 완전히 삭제되었습니다.`);
+                        setTimeout(() => setToastNotice(null), 3000);
+                        setDeleteConfirmTarget(null);
+                      }
+                    }}
+                    className="py-3.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-black shadow-lg shadow-rose-200 transition-all active:scale-98 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>영구 삭제 확인</span>
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

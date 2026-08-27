@@ -171,9 +171,16 @@ export default function App() {
     });
   };
 
-  const handleAddNewProblem = (newProb: ProblemItem) => {
+  const handleAddNewProblem = (newProb: ProblemItem, autoOpen = false) => {
     setProblems((prev) => [newProb, ...prev]);
-    setSelectedProblem(newProb);
+    if (autoOpen) {
+      setSelectedProblem(newProb);
+    }
+  };
+
+  const handleAddNewProblems = (newProbs: ProblemItem[]) => {
+    if (!newProbs || newProbs.length === 0) return;
+    setProblems((prev) => [...newProbs, ...prev]);
   };
 
   const handleDeleteProblem = (problemId: string) => {
@@ -311,6 +318,7 @@ export default function App() {
                 onSelectProblem={(prob) => setSelectedProblem(prob)}
                 onGoBack={() => setCurrentView('home')}
                 onAddNewProblem={handleAddNewProblem}
+                onAddNewProblems={handleAddNewProblems}
                 onDeleteProblem={handleDeleteProblem}
                 onAddNewFact={handleAddNewFact}
                 onDeleteFact={handleDeleteFact}
@@ -340,6 +348,7 @@ export default function App() {
                 onSelectProblem={(prob) => setSelectedProblem(prob)}
                 onGoBack={() => setCurrentView('home')}
                 onAddNewProblem={handleAddNewProblem}
+                onAddNewProblems={handleAddNewProblems}
                 onDeleteProblem={handleDeleteProblem}
                 onAddNewFact={handleAddNewFact}
                 onDeleteFact={handleDeleteFact}
@@ -362,6 +371,7 @@ export default function App() {
             onToggleBookmark={handleToggleBookmark}
             onClose={() => setSelectedProblem(null)}
             onAskAIAboutProblem={handleAskAIAboutSpecificProblem}
+            onDeleteProblem={userProfile.role === 'admin' ? handleDeleteProblem : undefined}
           />
         )}
       </AnimatePresence>

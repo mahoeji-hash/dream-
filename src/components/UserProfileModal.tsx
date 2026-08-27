@@ -727,7 +727,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <History className="w-8 h-8 mx-auto text-amber-400 mb-2 opacity-70" />
                   <p className="text-sm font-bold text-slate-700">질문한 기록이 없습니다</p>
                   <p className="text-xs text-slate-500 mt-1">
-                    '모르는 문제가 있어요!'에서 사진을 찍어 물어본 문제가 여기에 보관됩니다.
+                    질문 및 학습한 기록이 여기에 안전하게 보관됩니다.
                   </p>
                 </div>
               ) : (

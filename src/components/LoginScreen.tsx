@@ -149,40 +149,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <Sparkles className="w-5 h-5 text-amber-500" />
           </div>
 
-          <div className="flex flex-col items-center -mb-2">
-            <span className="text-xl animate-bounce">🌱</span>
-            <svg width="56" height="28" viewBox="0 0 68 34" fill="none" className="drop-shadow-sm">
+          <div className="flex flex-col items-center mb-1">
+            <span className="text-lg animate-bounce">🌱</span>
+            <svg width="48" height="22" viewBox="0 0 68 34" fill="none" className="drop-shadow-xs">
               <path d="M34 4L6 28C4.5 29.5 5.5 32 7.5 32H60.5C62.5 32 63.5 29.5 62 28L34 4Z" fill="#1E40AF" />
               <path d="M34 6L8 28H60L34 6Z" fill="#2563EB" />
-              <circle cx="34" cy="18" r="4" fill="#FEF08A" />
+              <circle cx="34" cy="18" r="3.5" fill="#FEF08A" />
             </svg>
           </div>
 
-          <div className="flex items-center justify-center gap-2 mt-0.5">
-            <h1
-              className="text-2xl sm:text-3xl font-extrabold tracking-wider"
-              style={{
-                color: '#2563EB',
-                fontFamily: "'Pretendard', sans-serif",
-                textShadow: '0 2px 0 #1D4ED8, 0 4px 10px rgba(37, 99, 235, 0.25)',
-                letterSpacing: '0.06em',
-              }}
-            >
+          <div className="flex items-center justify-center gap-3 my-1 select-none whitespace-nowrap">
+            <span className="text-2xl sm:text-3xl text-blue-600 font-logo-kr tracking-wide leading-none pt-0.5">
               풀어
-            </h1>
-            <span
-              className="text-2xl sm:text-3xl font-black tracking-wider uppercase"
-              style={{
-                color: '#2563EB',
-                fontFamily: "'Fredoka', 'Pretendard', sans-serif",
-                textShadow: '0 2px 0 #1D4ED8, 0 4px 10px rgba(37, 99, 235, 0.25)',
-                letterSpacing: '0.06em',
-              }}
-            >
+            </span>
+            <span className="px-3 py-0.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-logo-en font-black text-lg sm:text-xl tracking-widest leading-none shadow-md shadow-blue-500/25">
               DREAM
             </span>
           </div>
-          <p className="text-xs text-blue-900/90 font-bold mt-1">
+          <p className="text-[11px] sm:text-xs text-blue-900/90 font-bold mt-1.5 tracking-tight">
             수학 · 과학 교과서 맞춤 풀이 & 질문 도우미
           </p>
         </div>

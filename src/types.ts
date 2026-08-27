@@ -54,6 +54,8 @@ export interface ProblemItem {
   chapter: string;
   unitNumber: number;
   unitName: string;
+  subUnitId?: string;
+  unitCode?: string;
   pageNumber: number;
   problemNumber: string;
   problemType: '개념 예제' | '확인 문제' | '중단원 마무리' | '발전/심화 문제' | '실험 탐구';
