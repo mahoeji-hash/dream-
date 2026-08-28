@@ -301,3 +301,40 @@ export async function dbDeleteTextbookQuestion(id: number | string) {
   }
   return { success: true };
 }
+
+// ==========================================
+// 6. 커뮤니티 질문 (Community Questions) DB 연동
+// ==========================================
+
+// 커뮤니티 질문 DB 저장
+export async function dbSaveCommunityQuestion(question: any) {
+  const { data, error } = await supabase.from('community_questions').insert([
+    {
+      user_name: question.userName || '익명',
+      title: question.title || '',
+      content: question.content || '',
+      category: question.category || '자유',
+      image_url: question.imageUrl || '',
+    },
+  ]).select();
+
+  if (error) {
+    console.error('커뮤니티 질문 DB 저장 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true, data };
+}
+
+// 커뮤니티 질문 목록 DB 불러오기
+export async function dbFetchCommunityQuestions() {
+  const { data, error } = await supabase
+    .from('community_questions')
+    .select('*')
+    .order('id', { ascending: false });
+
+  if (error) {
+    console.error('커뮤니티 질문 불러오기 오류:', error);
+    return [];
+  }
+  return data || [];
+}
