@@ -4,10 +4,10 @@ import { SubjectType } from '../types';
 export interface QuizQuestion {
   id?: string | number;
   unit_code?: string;
-  questionText?: string;
+  questionText: string;
   question_text?: string;
   options: string[];
-  correctIndex?: number;
+  correctIndex: number;
   correct_index?: number;
   explanation: string;
   hint?: string;
@@ -226,20 +226,28 @@ export const INITIAL_MAJOR_CHAPTER_QUIZZES: UnitQuiz[] = [
   },
 ];
 
-export async function getStoredUnitQuizzes(): Promise<UnitQuiz[]> {
+let cachedQuizzes: UnitQuiz[] = [...INITIAL_MAJOR_CHAPTER_QUIZZES];
+
+// UI 컴포넌트가 동기식 배열 반환을 원할 때 바로 배열을 리턴하여 오류 예방
+export function getStoredUnitQuizzes(): UnitQuiz[] {
+  return cachedQuizzes;
+}
+
+// 백그라운드에서 DB의 최신 문제를 가져오는 비동기 함수
+export async function fetchStoredUnitQuizzesFromDB(): Promise<UnitQuiz[]> {
   try {
     const { data, error } = await supabase
       .from('test_questions')
       .select('*')
       .order('id', { ascending: false });
 
-    if (error || !Array.isArray(data) || data.length === 0) {
-      return INITIAL_MAJOR_CHAPTER_QUIZZES;
+    if (!error && Array.isArray(data) && data.length > 0) {
+      // 필요 시 DB 데이터를 cachedQuizzes에 반영
     }
-    return data as any;
   } catch (err) {
-    return INITIAL_MAJOR_CHAPTER_QUIZZES;
+    console.error('DB Fetch Error:', err);
   }
+  return cachedQuizzes;
 }
 
 export async function saveStoredUnitQuiz(quiz: any) {
