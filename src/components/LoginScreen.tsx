@@ -5,20 +5,18 @@ import {
   User,
   Sparkles,
   KeyRound,
-  School,
-  GraduationCap,
   CheckCircle2,
   AlertCircle,
-  ArrowRight,
   Lock,
   UserPlus,
   LogIn,
   Star,
   Eye,
   EyeOff,
+  Loader2,
 } from 'lucide-react';
 import { GradeType, UserProfile, UserRole } from '../types';
-import { registerAccount, authenticateUser, getStoredAccounts, clearAllAccounts } from '../services/authService';
+import { registerAccount, authenticateUser } from '../services/authService';
 import mascotImg from '../assets/images/puleo_dream_mascot_1787679912561.jpg';
 
 interface LoginScreenProps {
@@ -26,11 +24,9 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [accountCount, setAccountCount] = useState<number>(() => getStoredAccounts().length);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>(() => {
-    return getStoredAccounts().length === 0 ? 'signup' : 'login';
-  });
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [selectedRole, setSelectedRole] = useState<UserRole>('student');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Login form fields
   const [loginId, setLoginId] = useState('');
@@ -50,7 +46,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Clear messages when mode or role changes
   const handleSwitchMode = (mode: 'login' | 'signup') => {
     setAuthMode(mode);
     setErrorMessage(null);
@@ -63,32 +58,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     setSuccessMessage(null);
   };
 
-  const handleResetAllAccounts = () => {
-    if (window.confirm('등록된 모든 회원 계정을 완전히 삭제하시겠습니까?')) {
-      clearAllAccounts();
-      setAccountCount(0);
-      setAuthMode('signup');
-      setSuccessMessage('모든 가입 계정이 성공적으로 삭제되었습니다.');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    }
-  };
-
-  // Handle Login Submission
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Handle Login Submission (Async DB)
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setIsLoading(true);
 
-    const result = authenticateUser(loginId, loginPassword, selectedRole);
-    if (!result.success || !result.userProfile) {
-      setErrorMessage(result.error || '로그인에 실패했습니다.');
-      return;
+    try {
+      const result = await authenticateUser(loginId, loginPassword, selectedRole);
+      if (!result.success || !result.userProfile) {
+        setErrorMessage(result.error || '로그인에 실패했습니다.');
+        return;
+      }
+
+      onLoginSuccess(result.userProfile);
+    } catch {
+      setErrorMessage('로그인 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-
-    onLoginSuccess(result.userProfile);
   };
 
-  // Handle Signup Submission
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  // Handle Signup Submission (Async DB)
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -98,26 +90,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    const regResult = registerAccount({
-      loginId: signupId,
-      password: signupPassword,
-      role: selectedRole,
-      nickname: signupNickname,
-      schoolName: signupSchool,
-      grade: signupGrade,
-      adminSecretKey: selectedRole === 'admin' ? adminSecretKey : undefined,
-    });
+    setIsLoading(true);
 
-    if (!regResult.success) {
-      setErrorMessage(regResult.error || '회원가입에 실패했습니다.');
-      return;
-    }
+    try {
+      const regResult = await registerAccount({
+        loginId: signupId,
+        password: signupPassword,
+        role: selectedRole,
+        nickname: signupNickname,
+        schoolName: signupSchool,
+        grade: signupGrade,
+        adminSecretKey: selectedRole === 'admin' ? adminSecretKey : undefined,
+      });
 
-    // Signup successful! Auto-switch to login or auto-login
-    setSuccessMessage('🎉 회원가입이 완료되었습니다! 로그인 창으로 이동합니다.');
-    setTimeout(() => {
-      // Auto fill login credentials and log in
-      const autoAuth = authenticateUser(signupId, signupPassword, selectedRole);
+      if (!regResult.success) {
+        setErrorMessage(regResult.error || '회원가입에 실패했습니다.');
+        setIsLoading(false);
+        return;
+      }
+
+      setSuccessMessage('🎉 회원가입이 완료되었습니다! 로그인 처리 중...');
+
+      // Auto login after successful signup
+      const autoAuth = await authenticateUser(signupId, signupPassword, selectedRole);
       if (autoAuth.success && autoAuth.userProfile) {
         onLoginSuccess(autoAuth.userProfile);
       } else {
@@ -126,7 +121,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         setAuthMode('login');
         setSuccessMessage(null);
       }
-    }, 1200);
+    } catch {
+      setErrorMessage('회원가입 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -140,7 +139,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="w-full max-w-md bg-[#FFFDF9] rounded-[32px] shadow-[0_16px_40px_rgba(245,158,11,0.15),0_4px_12px_rgba(0,0,0,0.05)] border-[3px] border-amber-200 overflow-hidden flex flex-col"
       >
-        {/* Top 3D Clay Logo & Mascot Header */}
+        {/* Top Header */}
         <div className="bg-gradient-to-b from-amber-400 via-amber-300 to-yellow-200/90 p-5 text-center relative overflow-hidden border-b-2 border-amber-200">
           <div className="absolute top-2 left-3 text-amber-100 opacity-60">
             <Star className="w-6 h-6 fill-amber-300 text-amber-300 animate-pulse" />
@@ -171,7 +170,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </p>
         </div>
 
-        {/* Mascot Mini Greeting Badge */}
+        {/* Mascot Greeting */}
         <div className="px-5 py-3 flex items-center gap-3 bg-amber-50/50 border-b border-amber-100">
           <div className="w-11 h-11 rounded-2xl overflow-hidden border-2 border-amber-300 shadow-sm bg-white shrink-0">
             <img src={mascotImg} alt="풀어드림 마스코트" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -193,6 +192,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <div className="grid grid-cols-2 p-1 bg-amber-100/60 rounded-2xl border border-amber-200/80">
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => handleSwitchMode('login')}
               className={`py-2 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all ${
                 authMode === 'login'
@@ -206,6 +206,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => handleSwitchMode('signup')}
               className={`py-2 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 transition-all ${
                 authMode === 'signup'
@@ -219,11 +220,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Role Selection Tabs (Student vs Admin) */}
+        {/* Role Selection Tabs */}
         <div className="px-5 pt-3">
           <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => handleSwitchRole('student')}
               className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
                 selectedRole === 'student'
@@ -237,6 +239,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => handleSwitchRole('admin')}
               className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all ${
                 selectedRole === 'admin'
@@ -252,7 +255,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
         {/* Forms Container */}
         <div className="p-5 pt-3 space-y-3.5">
-          {/* Error / Success Feedback Alerts */}
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-bold flex items-start gap-2 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
@@ -295,6 +297,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   <input
                     type="text"
                     required
+                    disabled={isLoading}
                     value={loginId}
                     onChange={(e) => setLoginId(e.target.value)}
                     placeholder="가입한 아이디를 입력하세요"
@@ -320,6 +323,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    disabled={isLoading}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="비밀번호를 입력하세요"
@@ -329,13 +333,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
                 <button
                   type="submit"
+                  disabled={isLoading}
                   className={`w-full py-3.5 px-4 text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all mt-3 ${
                     selectedRole === 'admin'
                       ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
                       : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25'
                   }`}
                 >
-                  <LogIn className="w-4 h-4" />
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <LogIn className="w-4 h-4" />
+                  )}
                   <span>{selectedRole === 'admin' ? '관리자로 로그인하기' : '학생으로 로그인하기'}</span>
                 </button>
 
@@ -380,6 +389,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <input
                       type="text"
                       required
+                      disabled={isLoading}
                       value={signupId}
                       onChange={(e) => setSignupId(e.target.value)}
                       placeholder="3자 이상"
@@ -393,6 +403,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <input
                       type="text"
                       required
+                      disabled={isLoading}
                       value={signupNickname}
                       onChange={(e) => setSignupNickname(e.target.value)}
                       placeholder={selectedRole === 'admin' ? '예: 박선생님' : '예: 열공이'}
@@ -409,6 +420,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <input
                       type="password"
                       required
+                      disabled={isLoading}
                       value={signupPassword}
                       onChange={(e) => setSignupPassword(e.target.value)}
                       placeholder="4자 이상"
@@ -422,6 +434,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <input
                       type="password"
                       required
+                      disabled={isLoading}
                       value={signupPasswordConfirm}
                       onChange={(e) => setSignupPasswordConfirm(e.target.value)}
                       placeholder="동일하게 입력"
@@ -436,6 +449,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   </label>
                   <input
                     type="text"
+                    disabled={isLoading}
                     value={signupSchool}
                     onChange={(e) => setSignupSchool(e.target.value)}
                     placeholder="예: 대구화원고등학교"
@@ -449,6 +463,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       학년
                     </label>
                     <select
+                      disabled={isLoading}
                       value={signupGrade}
                       onChange={(e) => setSignupGrade(e.target.value as GradeType)}
                       className="w-full px-3 py-2 bg-white rounded-xl border border-slate-200 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -471,6 +486,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <input
                       type="password"
                       required
+                      disabled={isLoading}
                       value={adminSecretKey}
                       onChange={(e) => setAdminSecretKey(e.target.value)}
                       placeholder="발급받은 관리자 비밀 인증코드를 입력하세요"
@@ -484,13 +500,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
                 <button
                   type="submit"
+                  disabled={isLoading}
                   className={`w-full py-3.5 px-4 text-white font-black text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all mt-3 ${
                     selectedRole === 'admin'
                       ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
                       : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-500/25'
                   }`}
                 >
-                  <UserPlus className="w-4 h-4" />
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
                   <span>{selectedRole === 'admin' ? '관리자 계정 생성하기' : '학생 회원가입 완료하기'}</span>
                 </button>
 
@@ -514,13 +535,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <p className="text-[11px] text-slate-400 font-semibold">
             풀어 DREAM · 우리 학교 수학·과학 학습 지원 시스템
           </p>
-          <button
-            type="button"
-            onClick={handleResetAllAccounts}
-            className="text-[10px] text-slate-400 hover:text-rose-600 hover:underline transition-colors mt-0.5"
-          >
-            모든 가입 계정 데이터 초기화 (전체 삭제)
-          </button>
         </div>
       </motion.div>
     </div>
