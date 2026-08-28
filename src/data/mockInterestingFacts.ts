@@ -13,7 +13,6 @@ export interface InterestingFact {
   created_at?: string;
 }
 
-// 1. Supabase에서 포스터 전체 목록 가져오기
 export async function getStoredInterestingFacts(): Promise<InterestingFact[]> {
   try {
     const { data, error } = await supabase
@@ -21,23 +20,21 @@ export async function getStoredInterestingFacts(): Promise<InterestingFact[]> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('포스터 목록 불러오기 실패:', error);
-      return [];
-    }
-
+    if (error) return [];
     return data || [];
   } catch (err) {
-    console.error('네트워크 오류:', err);
     return [];
   }
 }
 
-// 2. Supabase에 새 포스터 등록하기
-export async function saveStoredInterestingFact(fact: {
+export async function saveStoredInterestingFact(fact: any) {
+  return saveStoredInterestingFacts(fact);
+}
+
+export async function saveStoredInterestingFacts(fact: {
   title: string;
   subtitle?: string;
-  category: string;
+  category?: string;
   content: string;
   tags?: string;
   theme?: string;
@@ -49,12 +46,12 @@ export async function saveStoredInterestingFact(fact: {
       .insert([
         {
           title: fact.title,
-          subtitle: fact.subtitle,
-          category: fact.category,
+          subtitle: fact.subtitle || '',
+          category: fact.category || '일반',
           content: fact.content,
-          tags: fact.tags,
-          theme: fact.theme,
-          image_url: fact.image_url,
+          tags: fact.tags || '',
+          theme: fact.theme || '',
+          image_url: fact.image_url || null,
           likes: 0
         }
       ])
@@ -63,7 +60,6 @@ export async function saveStoredInterestingFact(fact: {
     if (error) throw error;
     return { success: true, data };
   } catch (err: any) {
-    console.error('포스터 저장 실패:', err);
     return { success: false, error: err.message };
   }
 }
