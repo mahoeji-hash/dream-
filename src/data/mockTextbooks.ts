@@ -1,14 +1,15 @@
 import { supabase } from '../supabaseClient';
 
 export interface ProblemItem {
-  id: string | number;
-  textbookId?: string;
-  unitId?: string;
+  id?: string | number;
+  big_unit?: string;
+  mid_unit?: string;
+  category?: string;
   title?: string;
   content: string;
   solution?: string;
-  imageUrl?: string;
-  solutionImageUrl?: string;
+  image_url?: string;
+  solution_image_url?: string;
   difficulty?: string;
   created_at?: string;
 }
@@ -20,7 +21,7 @@ export async function getStoredProblems(): Promise<ProblemItem[]> {
     const { data, error } = await supabase
       .from('textbook_problems')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (error || !Array.isArray(data)) return [];
     return data;
@@ -30,8 +31,9 @@ export async function getStoredProblems(): Promise<ProblemItem[]> {
 }
 
 export async function saveStoredProblems(problem: {
-  textbookId?: string;
-  unitId?: string;
+  bigUnit?: string;
+  midUnit?: string;
+  category?: string;
   title?: string;
   content: string;
   solution?: string;
@@ -44,19 +46,21 @@ export async function saveStoredProblems(problem: {
       .from('textbook_problems')
       .insert([
         {
-          textbook_id: problem.textbookId,
-          unit_id: problem.unitId,
-          title: problem.title,
+          big_unit: problem.bigUnit || '',
+          mid_unit: problem.midUnit || '',
+          category: problem.category || '중단원 마무리',
+          title: problem.title || '',
           content: problem.content,
-          solution: problem.solution,
-          image_url: problem.imageUrl,
-          solution_image_url: problem.solutionImageUrl,
-          difficulty: problem.difficulty
+          solution: problem.solution || '',
+          difficulty: problem.difficulty || '보통'
         }
       ])
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase 저장 에러:', error);
+      throw error;
+    }
     return { success: true, data };
   } catch (err: any) {
     return { success: false, error: err.message };

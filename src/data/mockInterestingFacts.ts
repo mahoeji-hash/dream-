@@ -13,12 +13,14 @@ export interface InterestingFact {
   created_at?: string;
 }
 
+export const INITIAL_FACTS: InterestingFact[] = [];
+
 export async function getStoredInterestingFacts(): Promise<InterestingFact[]> {
   try {
     const { data, error } = await supabase
       .from('posters')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (error || !Array.isArray(data)) return [];
     return data;
@@ -57,7 +59,10 @@ export async function saveStoredInterestingFacts(fact: {
       ])
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('포스터 저장 에러:', error);
+      throw error;
+    }
     return { success: true, data };
   } catch (err: any) {
     return { success: false, error: err.message };

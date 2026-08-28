@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 
 export interface CommunityQuestion {
-  id: string;
+  id: string | number;
   subject: string;
   textbook_info?: string;
   title: string;
@@ -13,12 +13,14 @@ export interface CommunityQuestion {
   created_at?: string;
 }
 
+export const INITIAL_QUESTIONS: CommunityQuestion[] = [];
+
 export async function getStoredQuestions(): Promise<CommunityQuestion[]> {
   try {
     const { data, error } = await supabase
       .from('qna_questions')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (error || !Array.isArray(data)) return [];
     return data;
@@ -53,7 +55,10 @@ export async function saveStoredQuestions(question: {
       ])
       .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Q&A 저장 에러:', error);
+      throw error;
+    }
     return { success: true, data };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -66,12 +71,16 @@ export async function saveTeacherAnswer(questionId: number | string, answerConte
       .from('qna_questions')
       .update({
         answer_content: answerContent,
-        answer_image_url: answerImageUrl,
+        answer_image_url: answerImageUrl || null,
         status: '답변완료'
       })
-      .eq('id', questionId);
+      .eq('id', questionId)
+      .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('선생님 답변 저장 에러:', error);
+      throw error;
+    }
     return { success: true, data };
   } catch (err: any) {
     return { success: false, error: err.message };

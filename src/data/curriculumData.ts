@@ -16,7 +16,7 @@ export interface ChapterGroup {
   chapterName: string;
   fullName: string;
   subUnits: SubUnitItem[];
-  grandAssessment: SubUnitItem; // 대단원 평가 문제
+  grandAssessment: SubUnitItem;
 }
 
 export const MATH_MIRAEN_COMMON_MATH_2: ChapterGroup[] = [
@@ -136,19 +136,6 @@ export const MATH_MIRAEN_COMMON_MATH_2: ChapterGroup[] = [
   },
 ];
 
-// 비상 통합과학 2 교과서 단원 구조
-// 1단원: 변화와 다양성
-//   - 1. 지구 환경 변화와 생물다양성 (중단원 마무리)
-//   - 2. 화학 변화 (중단원 마무리)
-//   - I단원 변화와 다양성 대단원 마무리 (대단원 평가)
-// 2단원: 환경과 에너지
-//   - 1. 생태계와 환경 변화 (중단원 마무리)
-//   - 2. 에너지 전환과 활용 (중단원 마무리)
-//   - II단원 환경과 에너지 대단원 마무리 (대단원 평가)
-// 3단원: 과학과 미래 사회
-//   - 1. 과학 기술의 활용 (중단원 마무리)
-//   - 2. 과학 기술의 발전과 쟁점 (중단원 마무리)
-//   - III단원 과학과 미래 사회 대단원 마무리 (대단원 평가)
 export const SCIENCE_VISANG_INTEGRATED_2: ChapterGroup[] = [
   {
     id: 'ch-sci-diversity',
