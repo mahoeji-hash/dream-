@@ -20,8 +20,8 @@ export async function getStoredInterestingFacts(): Promise<InterestingFact[]> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) return [];
-    return data || [];
+    if (error || !Array.isArray(data)) return [];
+    return data;
   } catch (err) {
     return [];
   }
