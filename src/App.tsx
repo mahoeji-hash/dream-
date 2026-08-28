@@ -4,9 +4,9 @@ import {
   UserProfile, 
   SubjectType 
 } from './types';
-import { 
+import
   mockCommunityQuestions 
-} from './data/mockCommunityQuestions';
+ from './data/mockCommunityQuestions';
 import { 
   dbFetchCommunityQuestions, 
   dbSaveCommunityQuestion, 

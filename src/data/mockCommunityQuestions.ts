@@ -15,6 +15,9 @@ export interface CommunityQuestion {
 
 export const INITIAL_QUESTIONS: CommunityQuestion[] = [];
 
+// App.tsx에서 가져올 수 있도록 추가
+export const mockCommunityQuestions: CommunityQuestion[] = INITIAL_QUESTIONS;
+
 export async function getStoredQuestions(): Promise<CommunityQuestion[]> {
   try {
     const { data, error } = await supabase
