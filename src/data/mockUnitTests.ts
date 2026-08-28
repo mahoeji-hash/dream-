@@ -4,15 +4,30 @@ import { SubjectType } from '../types';
 export interface QuizQuestion {
   id?: string | number;
   unit_code?: string;
-  question_text: string;
+  questionText?: string;
+  question_text?: string;
   options: string[];
-  correct_index: number;
+  correctIndex?: number;
+  correct_index?: number;
   explanation: string;
   hint?: string;
   created_at?: string;
 }
 
-export async function getStoredUnitQuizzes(): Promise<QuizQuestion[]> {
+export interface UnitQuiz {
+  id: string;
+  subject?: SubjectType;
+  grade?: 'high_1';
+  chapterNumber?: number;
+  chapterName?: string;
+  unitName?: string;
+  unitCode?: string;
+  badge?: string;
+  estimatedMinutes?: number;
+  questions: QuizQuestion[];
+}
+
+export async function getStoredUnitQuizzes(): Promise<any[]> {
   try {
     const { data, error } = await supabase
       .from('test_questions')
@@ -26,24 +41,21 @@ export async function getStoredUnitQuizzes(): Promise<QuizQuestion[]> {
   }
 }
 
-export async function saveStoredUnitQuiz(quiz: {
-  unitCode?: string;
-  questionText: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
-  hint?: string;
-}) {
+export async function saveStoredUnitQuiz(quiz: any) {
+  return saveStoredUnitQuizzes(quiz);
+}
+
+export async function saveStoredUnitQuizzes(quiz: any) {
   try {
     const { data, error } = await supabase
       .from('test_questions')
       .insert([
         {
-          unit_code: quiz.unitCode || '',
-          question_text: quiz.questionText,
-          options: quiz.options,
-          correct_index: quiz.correctIndex,
-          explanation: quiz.explanation,
+          unit_code: quiz.unitCode || quiz.unit_code || '',
+          question_text: quiz.questionText || quiz.question_text || '',
+          options: quiz.options || [],
+          correct_index: quiz.correctIndex ?? quiz.correct_index ?? 0,
+          explanation: quiz.explanation || '',
           hint: quiz.hint || ''
         }
       ])
