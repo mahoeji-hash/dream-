@@ -201,8 +201,9 @@ export async function dbFetchTestQuestions() {
   }
   return data || [];
 }
+
 // ==========================================
-// 교과서 문제 DB 연동 (Textbook Questions)
+// 5. 교과서 문제 DB 연동 (Textbook Questions)
 // ==========================================
 
 export interface TextbookQuestionInput {
@@ -299,54 +300,4 @@ export async function dbDeleteTextbookQuestion(id: number | string) {
     return { success: false, error: error.message };
   }
   return { success: true };
-}
-// ==========================================
-// 교과서 문제 DB 연동 (Textbook Questions)
-// ==========================================
-
-export interface TextbookQuestionInput {
-  subject: 'math' | 'science';
-  textbookName: string;
-  publisher?: string;
-  unitCode: string;
-  unitName?: string;
-  pageNumber?: number;
-  problemNumber?: number;
-  title: string;
-  questionText: string;
-  imageUrl?: string;
-  solutionSteps?: Array<{
-    stepNumber: number;
-    title: string;
-    explanation: string;
-    formulaOrKey?: string;
-  }>;
-  finalAnswer?: string;
-  teacherTip?: string;
-}
-
-export async function dbSaveTextbookQuestion(item: TextbookQuestionInput) {
-  const { data, error } = await supabase.from('textbook_questions').insert([
-    {
-      subject: item.subject,
-      textbook_name: item.textbookName,
-      publisher: item.publisher,
-      unit_code: item.unitCode,
-      unit_name: item.unitName,
-      page_number: item.pageNumber,
-      problem_number: item.problemNumber,
-      title: item.title,
-      question_text: item.questionText,
-      image_url: item.imageUrl,
-      solution_steps: item.solutionSteps,
-      final_answer: item.finalAnswer,
-      teacher_tip: item.teacherTip,
-    },
-  ]).select();
-
-  if (error) {
-    console.error('교과서 문제 DB 저장 오류:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true, data };
 }
