@@ -1,426 +1,102 @@
 import React, { useState, useEffect } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { TEXTBOOKS, getStoredProblems, saveStoredProblems } from './data/mockTextbooks';
-import { getStoredQuestions, saveStoredQuestions } from './data/mockCommunityQuestions';
-import { getStoredInterestingFacts, saveStoredInterestingFacts } from './data/mockInterestingFacts';
-import { ProblemItem, TextbookInfo, UserProfile, AIQuestionResult, CommunityQuestion, TeacherAnswer, InterestingFactItem, QuizAttemptRecord } from './types';
-import { getStoredAccounts } from './services/authService';
-import { HomeScreen } from './components/HomeScreen';
-import { TextbookMasterView } from './components/TextbookMasterView';
-import { ProblemDetailModal } from './components/ProblemDetailModal';
-import { AskQuestionModal } from './components/AskQuestionModal';
-import { UserProfileModal } from './components/UserProfileModal';
-import { CommunityQnAModal } from './components/CommunityQnAModal';
-import { LoginScreen } from './components/LoginScreen';
-
-const DEFAULT_PROFILE: UserProfile = {
-  role: 'student',
-  nickname: '화원고열공이',
-  schoolName: '대구화원고등학교',
-  grade: 'high_1',
-  avatarSeed: 'puppy',
-  solvedCount: 0,
-  helpedCount: 0,
-  bookmarkedProblemIds: [],
-  historyQuestions: [],
-  quizAttempts: [],
-  wrongQuizQuestions: [],
-};
+import { getStoredQuestions } from './data/mockCommunityQuestions';
+import { getStoredInterestingFacts } from './data/mockInterestingFacts';
+import { getStoredProblems } from './data/mockTextbooks';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    const accounts = getStoredAccounts();
-    if (accounts.length === 0) {
-      localStorage.removeItem('puleo_is_logged_in');
-      localStorage.removeItem('puleo_user_profile');
-      return false;
-    }
-    const savedLogin = localStorage.getItem('puleo_is_logged_in');
-    return savedLogin === 'true';
-  });
+  // 1. 상태를 무조건 빈 배열([])로 안전하게 시작합니다.
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [facts, setFacts] = useState<any[]>([]);
+  const [problems, setProblems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [currentView, setCurrentView] = useState<'home' | 'math' | 'science'>('home');
-  const [selectedProblem, setSelectedProblem] = useState<ProblemItem | null>(null);
-  const [isAskQuestionOpen, setIsAskQuestionOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isQnAOpen, setIsQnAOpen] = useState(false);
-  const [problemForAI, setProblemForAI] = useState<ProblemItem | null>(null);
-
-  // Persistent State
-  const [problems, setProblems] = useState<ProblemItem[]>(() => {
-    return getStoredProblems();
-  });
-
-  const [communityQuestions, setCommunityQuestions] = useState<CommunityQuestion[]>(() => {
-    return getStoredQuestions();
-  });
-
-  const [interestingFacts, setInterestingFacts] = useState<InterestingFactItem[]>(() => {
-    return getStoredInterestingFacts();
-  });
-
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('puleo_user_profile');
-    if (saved) {
+  // 2. 화면이 켜지면 Supabase에서 데이터를 안전하게 가져옵니다.
+  useEffect(() => {
+    async function loadAllData() {
       try {
-        const parsed = JSON.parse(saved);
-        // Clean legacy mock default bookmarks if user had not customized
-        if (
-          Array.isArray(parsed.bookmarkedProblemIds) &&
-          parsed.bookmarkedProblemIds.length === 2 &&
-          parsed.bookmarkedProblemIds[0] === 'prob-math-1' &&
-          parsed.bookmarkedProblemIds[1] === 'prob-sci-1'
-        ) {
-          parsed.bookmarkedProblemIds = [];
-        }
-        return {
-          ...DEFAULT_PROFILE,
-          ...parsed,
-          bookmarkedProblemIds: Array.isArray(parsed.bookmarkedProblemIds) ? parsed.bookmarkedProblemIds : [],
-          quizAttempts: Array.isArray(parsed.quizAttempts) ? parsed.quizAttempts : [],
-          wrongQuizQuestions: Array.isArray(parsed.wrongQuizQuestions) ? parsed.wrongQuizQuestions : [],
-        };
-      } catch (e) {
-        return DEFAULT_PROFILE;
+        const [qData, fData, pData] = await Promise.all([
+          getStoredQuestions(),
+          getStoredInterestingFacts(),
+          getStoredProblems()
+        ]);
+
+        // 배열이 맞는지 확인 후 상태에 저장 (에러 방지)
+        setQuestions(Array.isArray(qData) ? qData : []);
+        setFacts(Array.isArray(fData) ? fData : []);
+        setProblems(Array.isArray(pData) ? pData : []);
+      } catch (error) {
+        console.error("데이터 로딩 중 에러 발생:", error);
+      } finally {
+        setLoading(false);
       }
     }
-    return DEFAULT_PROFILE;
-  });
 
-  // Save to local storage on changes
-  useEffect(() => {
-    saveStoredProblems(problems);
-  }, [problems]);
+    loadAllData();
+  }, []);
 
-  useEffect(() => {
-    saveStoredQuestions(communityQuestions);
-  }, [communityQuestions]);
-
-  useEffect(() => {
-    saveStoredInterestingFacts(interestingFacts);
-  }, [interestingFacts]);
-
-  useEffect(() => {
-    localStorage.setItem('puleo_user_profile', JSON.stringify(userProfile));
-  }, [userProfile]);
-
-  useEffect(() => {
-    localStorage.setItem('puleo_is_logged_in', isLoggedIn ? 'true' : 'false');
-  }, [isLoggedIn]);
-
-  const handleLoginSuccess = (profile: UserProfile) => {
-    setUserProfile(profile);
-    setIsLoggedIn(true);
-  };
-
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setIsProfileOpen(false);
-    setIsQnAOpen(false);
-    setCurrentView('home');
-  };
-
-  const handleToggleBookmark = (problemId: string) => {
-    setUserProfile((prev) => {
-      const exists = prev.bookmarkedProblemIds.includes(problemId);
-      const updated = exists
-        ? prev.bookmarkedProblemIds.filter((id) => id !== problemId)
-        : [...prev.bookmarkedProblemIds, problemId];
-      return { ...prev, bookmarkedProblemIds: updated };
-    });
-  };
-
-  const handleSaveAIQuestionResult = (result: AIQuestionResult) => {
-    setUserProfile((prev) => ({
-      ...prev,
-      historyQuestions: [result, ...prev.historyQuestions],
-      solvedCount: prev.solvedCount + 1,
-    }));
-  };
-
-  const handleCompleteQuiz = (attempt: QuizAttemptRecord) => {
-    setUserProfile((prev) => {
-      const currentAttempts = prev.quizAttempts || [];
-      const currentWrong = prev.wrongQuizQuestions || [];
-
-      // Add new attempt record
-      const updatedAttempts = [attempt, ...currentAttempts];
-
-      // Remove any previously recorded wrong questions for this quiz that the user now solved correctly
-      const newWrongQuestionIds = new Set(attempt.wrongAnswers.map((w) => w.questionId));
-      const remainingOldWrong = currentWrong.filter((w) => {
-        if (w.quizId === attempt.quizId) {
-          // If was wrong in old quiz but now solved correctly, remove it!
-          return newWrongQuestionIds.has(w.questionId);
-        }
-        return true;
-      });
-
-      // Replace or prepend newest wrong answers
-      const updatedWrong = [
-        ...attempt.wrongAnswers,
-        ...remainingOldWrong.filter((w) => !newWrongQuestionIds.has(w.questionId)),
-      ];
-
-      return {
-        ...prev,
-        solvedCount: prev.solvedCount + 1,
-        quizAttempts: updatedAttempts,
-        wrongQuizQuestions: updatedWrong,
-      };
-    });
-  };
-
-  const handleAddNewProblem = (newProb: ProblemItem, autoOpen = false) => {
-    setProblems((prev) => [newProb, ...prev]);
-    if (autoOpen) {
-      setSelectedProblem(newProb);
-    }
-  };
-
-  const handleAddNewProblems = (newProbs: ProblemItem[]) => {
-    if (!newProbs || newProbs.length === 0) return;
-    setProblems((prev) => [...newProbs, ...prev]);
-  };
-
-  const handleDeleteProblem = (problemId: string) => {
-    setProblems((prev) => prev.filter((p) => p.id !== problemId));
-    if (selectedProblem?.id === problemId) {
-      setSelectedProblem(null);
-    }
-  };
-
-  // Interesting Facts Handlers (Admin creates/deletes, 1 like per user account)
-  const handleAddNewFact = (newFact: InterestingFactItem) => {
-    setInterestingFacts((prev) => [newFact, ...prev]);
-  };
-
-  const handleDeleteFact = (factId: string) => {
-    setInterestingFacts((prev) => prev.filter((f) => f.id !== factId));
-  };
-
-  const handleToggleLikeFact = (factId: string) => {
-    const activeUserId = userProfile.id || userProfile.loginId || 'user_account_default';
-    setInterestingFacts((prev) =>
-      prev.map((f) => {
-        if (f.id !== factId) return f;
-        const currentLikedUsers = Array.isArray(f.likedUserIds) ? f.likedUserIds : [];
-        const isAlreadyLiked = currentLikedUsers.includes(activeUserId);
-
-        if (isAlreadyLiked) {
-          // Unlike (1 like per account toggle off)
-          const updatedUsers = currentLikedUsers.filter((uid) => uid !== activeUserId);
-          return {
-            ...f,
-            likes: Math.max(0, (f.likes || 1) - 1),
-            likedUserIds: updatedUsers,
-          };
-        } else {
-          // Like (add user ID)
-          return {
-            ...f,
-            likes: (f.likes || 0) + 1,
-            likedUserIds: [...currentLikedUsers, activeUserId],
-          };
-        }
-      })
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>
+        <h2>데이터를 불러오는 중입니다...</h2>
+      </div>
     );
-  };
-
-  // Community Questions Handlers
-  const handleAddCommunityQuestion = (newQ: CommunityQuestion) => {
-    setCommunityQuestions((prev) => [newQ, ...prev]);
-  };
-
-  const handleAnswerCommunityQuestion = (questionId: string, answer: TeacherAnswer) => {
-    setCommunityQuestions((prev) =>
-      prev.map((q) =>
-        q.id === questionId
-          ? {
-              ...q,
-              status: 'answered',
-              teacherAnswer: answer,
-            }
-          : q
-      )
-    );
-  };
-
-  const handleDeleteCommunityQuestion = (questionId: string) => {
-    setCommunityQuestions((prev) => prev.filter((q) => q.id !== questionId));
-  };
-
-  const handleAskAIAboutSpecificProblem = (problem: ProblemItem) => {
-    setProblemForAI(problem);
-    setSelectedProblem(null);
-    setIsAskQuestionOpen(true);
-  };
-
-  const handleSelectHistoryQuestion = (historyItem: AIQuestionResult) => {
-    setProblemForAI(null);
-    setIsAskQuestionOpen(true);
-  };
-
-  const waitingCount = communityQuestions.filter((q) => q.status === 'waiting').length;
-
-  // If not logged in, display the Login Screen first
-  if (!isLoggedIn) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <div id="puleo-dream-app" className="min-h-screen bg-[#F8F5EE] bg-[radial-gradient(#E8DFCA_1px,transparent_1px)] [background-size:24px_24px] text-slate-800 flex flex-col justify-between selection:bg-amber-200">
-      <main className="flex-1 w-full flex flex-col items-center justify-start py-2 sm:py-4">
-        <AnimatePresence mode="wait">
-          {currentView === 'home' && (
-            <motion.div
-              key="home"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25 }}
-              className="w-full"
-            >
-              <HomeScreen
-                onSelectMath={() => setCurrentView('math')}
-                onSelectScience={() => setCurrentView('science')}
-                onSelectAskQuestion={() => {
-                  setProblemForAI(null);
-                  setIsAskQuestionOpen(true);
-                }}
-                onSelectQnA={() => setIsQnAOpen(true)}
-                onOpenProfile={() => setIsProfileOpen(true)}
-                onLogout={handleLogout}
-                userRole={userProfile.role}
-                solvedCount={userProfile.solvedCount}
-                waitingQuestionsCount={waitingCount}
-              />
-            </motion.div>
-          )}
+    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '800px', margin: '0 auto' }}>
+      <header style={{ borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
+        <h1 style={{ color: '#333' }}>풀어 DREAM - 수학 학습 플랫폼</h1>
+      </header>
 
-          {currentView === 'math' && (
-            <motion.div
-              key="math"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.25 }}
-              className="w-full"
-            >
-              <TextbookMasterView
-                subject="math"
-                textbooks={TEXTBOOKS}
-                problems={problems}
-                bookmarkedProblemIds={userProfile.bookmarkedProblemIds}
-                userRole={userProfile.role}
-                currentUserId={userProfile.id || userProfile.loginId || 'user_account_default'}
-                facts={interestingFacts}
-                onSelectProblem={(prob) => setSelectedProblem(prob)}
-                onGoBack={() => setCurrentView('home')}
-                onAddNewProblem={handleAddNewProblem}
-                onAddNewProblems={handleAddNewProblems}
-                onDeleteProblem={handleDeleteProblem}
-                onAddNewFact={handleAddNewFact}
-                onDeleteFact={handleDeleteFact}
-                onToggleLikeFact={handleToggleLikeFact}
-                onCompleteQuiz={handleCompleteQuiz}
-              />
-            </motion.div>
+      <main>
+        {/* Q&A 질문 섹션 */}
+        <section style={{ marginBottom: '30px' }}>
+          <h2>Q&A 질문 목록 ({(questions || []).length}개)</h2>
+          {(questions || []).length === 0 ? (
+            <p style={{ color: '#888' }}>등록된 질문이 없습니다.</p>
+          ) : (
+            <ul>
+              {(questions || []).map((q) => (
+                <li key={q.id} style={{ marginBottom: '8px' }}>
+                  <strong>[{q.subject || '일반'}]</strong> {q.title}
+                </li>
+              ))}
+            </ul>
           )}
+        </section>
 
-          {currentView === 'science' && (
-            <motion.div
-              key="science"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.25 }}
-              className="w-full"
-            >
-              <TextbookMasterView
-                subject="science"
-                textbooks={TEXTBOOKS}
-                problems={problems}
-                bookmarkedProblemIds={userProfile.bookmarkedProblemIds}
-                userRole={userProfile.role}
-                currentUserId={userProfile.id || userProfile.loginId || 'user_account_default'}
-                facts={interestingFacts}
-                onSelectProblem={(prob) => setSelectedProblem(prob)}
-                onGoBack={() => setCurrentView('home')}
-                onAddNewProblem={handleAddNewProblem}
-                onAddNewProblems={handleAddNewProblems}
-                onDeleteProblem={handleDeleteProblem}
-                onAddNewFact={handleAddNewFact}
-                onDeleteFact={handleDeleteFact}
-                onToggleLikeFact={handleToggleLikeFact}
-                onCompleteQuiz={handleCompleteQuiz}
-              />
-            </motion.div>
+        {/* 흥미로운 사실 / 포스터 섹션 */}
+        <section style={{ marginBottom: '30px' }}>
+          <h2>수학 포스터 목록 ({(facts || []).length}개)</h2>
+          {(facts || []).length === 0 ? (
+            <p style={{ color: '#888' }}>등록된 포스터가 없습니다.</p>
+          ) : (
+            <ul>
+              {(facts || []).map((f) => (
+                <li key={f.id} style={{ marginBottom: '8px' }}>
+                  <strong>[{f.category || '포스터'}]</strong> {f.title}
+                </li>
+              ))}
+            </ul>
           )}
-        </AnimatePresence>
+        </section>
+
+        {/* 교재 문제 섹션 */}
+        <section style={{ marginBottom: '30px' }}>
+          <h2>교재 문제 목록 ({(problems || []).length}개)</h2>
+          {(problems || []).length === 0 ? (
+            <p style={{ color: '#888' }}>등록된 문제가 없습니다.</p>
+          ) : (
+            <ul>
+              {(problems || []).map((p) => (
+                <li key={p.id} style={{ marginBottom: '8px' }}>
+                  {p.title || p.content}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
-
-      {/* Problem Detail Modal */}
-      <AnimatePresence>
-        {selectedProblem && (
-          <ProblemDetailModal
-            problem={selectedProblem}
-            textbook={TEXTBOOKS.find((tb) => tb.id === selectedProblem.textbookId)}
-            isBookmarked={userProfile.bookmarkedProblemIds.includes(selectedProblem.id)}
-            userRole={userProfile.role}
-            onToggleBookmark={handleToggleBookmark}
-            onClose={() => setSelectedProblem(null)}
-            onAskAIAboutProblem={handleAskAIAboutSpecificProblem}
-            onDeleteProblem={userProfile.role === 'admin' ? handleDeleteProblem : undefined}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Ask Question (Camera / Photo / Text AI Solver) Modal */}
-      <AnimatePresence>
-        {isAskQuestionOpen && (
-          <AskQuestionModal
-            initialProblem={problemForAI}
-            userProfile={userProfile}
-            onClose={() => {
-              setIsAskQuestionOpen(false);
-              setProblemForAI(null);
-            }}
-            onSaveToHistory={handleSaveAIQuestionResult}
-            onPostToCommunity={handleAddCommunityQuestion}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Community Q&A Modal with Role-Based Answering Control */}
-      <AnimatePresence>
-        {isQnAOpen && (
-          <CommunityQnAModal
-            userProfile={userProfile}
-            questions={communityQuestions}
-            onClose={() => setIsQnAOpen(false)}
-            onAddQuestion={handleAddCommunityQuestion}
-            onAnswerQuestion={handleAnswerCommunityQuestion}
-            onDeleteQuestion={userProfile.role === 'admin' ? handleDeleteCommunityQuestion : undefined}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* User Profile & Bookmarks Modal */}
-      <AnimatePresence>
-        {isProfileOpen && (
-          <UserProfileModal
-            userProfile={userProfile}
-            problems={problems}
-            onUpdateProfile={(updated) => setUserProfile((prev) => ({ ...prev, ...updated }))}
-            onSelectProblem={(prob) => setSelectedProblem(prob)}
-            onSelectHistoryQuestion={handleSelectHistoryQuestion}
-            onLogout={handleLogout}
-            onClose={() => setIsProfileOpen(false)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
-
