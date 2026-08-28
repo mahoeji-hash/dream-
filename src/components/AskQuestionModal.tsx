@@ -126,9 +126,9 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
       setErrorMsg(
         '카메라 권한을 확인해주세요. (브라우저 설정에서 카메라 권한을 허용하거나 스마트폰 기본 카메라 앱으로 촬영할 수 있습니다.)'
       );
-    } fontally {
-      setIsCameraStarting(false);
-    }
+    } finally {
+  setIsCameraStarting(false);
+}
   };
 
   const toggleFacingMode = async () => {
