@@ -1,73 +1,70 @@
-import { TextbookInfo, ProblemItem } from '../types';
+import { supabase } from '../supabaseClient';
 
-export const TEXTBOOKS: TextbookInfo[] = [
-  // Math Textbook: 미래엔 공통수학 2
-  {
-    id: 'tb-math-mr-h2',
-    name: '미래엔 공통수학 2',
-    publisher: '미래엔',
-    subject: 'math',
-    grade: 'high_1',
-    category: '교과서',
-    color: '#2563EB',
-    badgeText: '공통수학 2 (미래엔)',
-    totalChapters: 3,
-  },
+export interface ProblemItem {
+  id: string | number;
+  textbookId?: string;
+  unitId?: string;
+  title?: string;
+  content: string;
+  solution?: string;
+  imageUrl?: string;
+  solutionImageUrl?: string;
+  difficulty?: string;
+  created_at?: string;
+}
 
-  // Science Textbook: 비상교육 통합과학 2
-  {
-    id: 'tb-sci-bs-h2',
-    name: '비상교육 통합과학 2',
-    publisher: '비상교육',
-    subject: 'science',
-    grade: 'high_1',
-    category: '교과서',
-    color: '#10B981',
-    badgeText: '통합과학 2 (비상교육)',
-    totalChapters: 3,
-  },
-];
-
-// Completely empty problem array - no pre-seeded mock problems
-export const INITIAL_CURRICULUM_PROBLEMS: ProblemItem[] = [];
-
-const PROBLEMS_STORAGE_KEY = 'puleo_dream_stored_problems_v7_sci2';
-
-export const getStoredProblems = (): ProblemItem[] => {
+// 1. Supabase에서 교과서/대단원 문제 목록 가져오기
+export async function getStoredProblems(): Promise<ProblemItem[]> {
   try {
-    // Clear old problem storage keys that had pre-seeded mock data
-    const oldKeys = [
-      'puleo_problems_v2',
-      'puleo_dream_stored_problems_v3_math2',
-      'puleo_dream_stored_problems_v4_clean',
-      'puleo_dream_stored_problems_v5_empty',
-      'puleo_dream_stored_problems_v6_clean'
-    ];
-    oldKeys.forEach((k) => {
-      try {
-        localStorage.removeItem(k);
-      } catch {}
-    });
+    const { data, error } = await supabase
+      .from('textbook_problems')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    const raw = localStorage.getItem(PROBLEMS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(PROBLEMS_STORAGE_KEY, JSON.stringify([]));
+    if (error) {
+      console.error('문제 목록 불러오기 실패:', error);
       return [];
     }
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return [];
-  } catch {
-    return [];
-  }
-};
 
-export const saveStoredProblems = (problems: ProblemItem[]): void => {
-  try {
-    localStorage.setItem(PROBLEMS_STORAGE_KEY, JSON.stringify(problems));
+    return data || [];
   } catch (err) {
-    console.error('Failed to save problems to storage:', err);
+    console.error('네트워크 오류:', err);
+    return [];
   }
-};
+}
+
+// 2. Supabase에 새 교과서 문제 저장하기
+export async function saveStoredProblems(problem: {
+  textbookId?: string;
+  unitId?: string;
+  title?: string;
+  content: string;
+  solution?: string;
+  imageUrl?: string;
+  solutionImageUrl?: string;
+  difficulty?: string;
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('textbook_problems')
+      .insert([
+        {
+          textbook_id: problem.textbookId,
+          unit_id: problem.unitId,
+          title: problem.title,
+          content: problem.content,
+          solution: problem.solution,
+          image_url: problem.imageUrl,
+          solution_image_url: problem.solutionImageUrl,
+          difficulty: problem.difficulty
+        }
+      ])
+      .select();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('문제 저장 실패:', err);
+    return { success: false, error: err.message };
+  }
+}
