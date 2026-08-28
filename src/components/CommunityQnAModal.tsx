@@ -28,6 +28,7 @@ import {
   Image as ImageIcon,
   Maximize2,
   ScanLine,
+  Loader2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CommunityQuestion, TeacherAnswer, UserProfile, SubjectType, SolutionStep } from '../types';
@@ -36,9 +37,11 @@ interface CommunityQnAModalProps {
   userProfile: UserProfile;
   questions: CommunityQuestion[];
   onClose: () => void;
-  onAddQuestion: (newQ: CommunityQuestion) => void;
-  onAnswerQuestion: (questionId: string, answer: TeacherAnswer) => void;
-  onDeleteQuestion?: (questionId: string) => void;
+  // DB 연동을 위해 Promise 지원 및 타입 매핑
+  onAddQuestion: (newQ: Omit<CommunityQuestion, 'id' | 'createdAt' | 'status' | 'likes'>) => Promise<void> | void;
+  onAnswerQuestion: (questionId: string, answer: TeacherAnswer) => Promise<void> | void;
+  onDeleteQuestion?: (questionId: string) => Promise<void> | void;
+  onToggleLike?: (questionId: string, isLiked: boolean) => Promise<void> | void;
 }
 
 export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
@@ -48,6 +51,7 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
   onAddQuestion,
   onAnswerQuestion,
   onDeleteQuestion,
+  onToggleLike,
 }) => {
   // Navigation / View State
   const [activeTab, setActiveTab] = useState<'all' | 'waiting' | 'answered'>('all');
@@ -55,6 +59,11 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQuestion, setSelectedQuestion] = useState<CommunityQuestion | null>(null);
   const [isCreatingNewQ, setIsCreatingNewQ] = useState(false);
+
+  // DB Async Operations Loading States
+  const [isSubmittingQ, setIsSubmittingQ] = useState(false);
+  const [isSubmittingAns, setIsSubmittingAns] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // New Question Form state
   const [newQTitle, setNewQTitle] = useState('');
@@ -87,11 +96,20 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
   // Likes state
   const [likedQuestions, setLikedQuestions] = useState<string[]>([]);
 
-  const handleToggleLike = (qId: string) => {
-    if (likedQuestions.includes(qId)) {
+  const handleToggleLike = async (qId: string) => {
+    const isLiked = likedQuestions.includes(qId);
+    if (isLiked) {
       setLikedQuestions(likedQuestions.filter((id) => id !== qId));
     } else {
       setLikedQuestions([...likedQuestions, qId]);
+    }
+
+    if (onToggleLike) {
+      try {
+        await onToggleLike(qId, isLiked);
+      } catch (err) {
+        console.error('좋아요 DB 업데이트 실패:', err);
+      }
     }
   };
 
@@ -125,40 +143,39 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  // Handle New Question Submit
-  const handleSubmitNewQuestion = (e: React.FormEvent) => {
+  // Handle New Question Submit (DB Ready)
+  const handleSubmitNewQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newQTitle.trim() || !newQContent.trim()) return;
+    if (!newQTitle.trim() || !newQContent.trim() || isSubmittingQ) return;
 
-    const newQuestion: CommunityQuestion = {
-      id: `q-${Date.now()}`,
-      authorId: userProfile.id || `user-${Date.now()}`,
-      authorName: userProfile.nickname || '익명 학생',
-      authorRole: userProfile.role,
-      authorSchool: userProfile.schoolName || '대구화원고등학교',
-      authorGrade: userProfile.grade,
-      subject: newQSubject,
-      textbookRef: newQTextbookRef.trim() || undefined,
-      title: newQTitle.trim(),
-      content: newQContent.trim(),
-      imageUrl: newQImage || undefined,
-      createdAt: new Date().toLocaleDateString('ko-KR', {
-        month: 'numeric',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      status: 'waiting',
-      likes: 1,
-    };
+    setIsSubmittingQ(true);
+    try {
+      const newQuestionPayload = {
+        authorId: userProfile.id || `user-${Date.now()}`,
+        authorName: userProfile.nickname || '익명 학생',
+        authorRole: userProfile.role,
+        authorSchool: userProfile.schoolName || '대구화원고등학교',
+        authorGrade: userProfile.grade,
+        subject: newQSubject,
+        textbookRef: newQTextbookRef.trim() || undefined,
+        title: newQTitle.trim(),
+        content: newQContent.trim(),
+        imageUrl: newQImage || undefined,
+      };
 
-    onAddQuestion(newQuestion);
-    setIsCreatingNewQ(false);
-    setSelectedQuestion(newQuestion);
-    setNewQTitle('');
-    setNewQContent('');
-    setNewQTextbookRef('');
-    setNewQImage(null);
+      await onAddQuestion(newQuestionPayload as any);
+
+      setIsCreatingNewQ(false);
+      setNewQTitle('');
+      setNewQContent('');
+      setNewQTextbookRef('');
+      setNewQImage(null);
+    } catch (err) {
+      alert('질문 저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+      console.error(err);
+    } finally {
+      setIsSubmittingQ(false);
+    }
   };
 
   // Open Teacher Answering Form
@@ -214,48 +231,73 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
     }
   };
 
-  // Submit Teacher Answer
-  const handleSubmitAnswer = (e: React.FormEvent) => {
+  // Submit Teacher Answer (DB Ready)
+  const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedQuestion || !answerText.trim()) return;
+    if (!selectedQuestion || !answerText.trim() || isSubmittingAns) return;
 
-    const validSteps: SolutionStep[] = steps
-      .filter((s) => s.explanation.trim())
-      .map((s, i) => ({
-        stepNumber: i + 1,
-        title: s.title.trim() || `${i + 1}단계 풀이`,
-        explanation: s.explanation.trim(),
-        formulaOrKey: s.formulaOrKey?.trim() || undefined,
-      }));
+    setIsSubmittingAns(true);
+    try {
+      const validSteps: SolutionStep[] = steps
+        .filter((s) => s.explanation.trim())
+        .map((s, i) => ({
+          stepNumber: i + 1,
+          title: s.title.trim() || `${i + 1}단계 풀이`,
+          explanation: s.explanation.trim(),
+          formulaOrKey: s.formulaOrKey?.trim() || undefined,
+        }));
 
-    const newAnswer: TeacherAnswer = {
-      id: `ans-${Date.now()}`,
-      authorId: userProfile.id || 'admin-1',
-      authorName: userProfile.nickname.includes('선생님')
-        ? userProfile.nickname
-        : `${userProfile.nickname} (선생님)`,
-      authorSchool: userProfile.schoolName || '대구화원고등학교 교무실',
-      answeredAt: new Date().toLocaleDateString('ko-KR', {
-        month: 'numeric',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      answerText: answerText.trim(),
-      imageUrl: answerImageUrl || undefined,
-      keyFormula: answerKeyFormula.trim() || undefined,
-      solutionSteps: validSteps.length > 0 ? validSteps : undefined,
-      teacherTip: answerTeacherTip.trim() || undefined,
-      verifiedBadge: true,
-    };
+      const newAnswer: TeacherAnswer = {
+        id: selectedQuestion.teacherAnswer?.id || `ans-${Date.now()}`,
+        authorId: userProfile.id || 'admin-1',
+        authorName: userProfile.nickname.includes('선생님')
+          ? userProfile.nickname
+          : `${userProfile.nickname} (선생님)`,
+        authorSchool: userProfile.schoolName || '대구화원고등학교 교무실',
+        answeredAt: new Date().toLocaleDateString('ko-KR', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        answerText: answerText.trim(),
+        imageUrl: answerImageUrl || undefined,
+        keyFormula: answerKeyFormula.trim() || undefined,
+        solutionSteps: validSteps.length > 0 ? validSteps : undefined,
+        teacherTip: answerTeacherTip.trim() || undefined,
+        verifiedBadge: true,
+      };
 
-    onAnswerQuestion(selectedQuestion.id, newAnswer);
-    setSelectedQuestion({
-      ...selectedQuestion,
-      status: 'answered',
-      teacherAnswer: newAnswer,
-    });
-    setIsAnswering(false);
+      await onAnswerQuestion(selectedQuestion.id, newAnswer);
+
+      setSelectedQuestion({
+        ...selectedQuestion,
+        status: 'answered',
+        teacherAnswer: newAnswer,
+      });
+      setIsAnswering(false);
+    } catch (err) {
+      alert('답변 저장 중 오류가 발생했습니다.');
+      console.error(err);
+    } finally {
+      setIsSubmittingAns(false);
+    }
+  };
+
+  // Handle Question Delete (DB Ready)
+  const handleDelete = async (questionId: string) => {
+    if (!onDeleteQuestion || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteQuestion(questionId);
+      setSelectedQuestion(null);
+      setConfirmDeleteQ(false);
+    } catch (err) {
+      alert('삭제 처리 중 오류가 발생했습니다.');
+      console.error(err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleStepChange = (index: number, field: string, value: string) => {
@@ -367,9 +409,7 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          {/* ========================================================== */}
           {/* VIEW 1: CREATE NEW QUESTION FORM */}
-          {/* ========================================================== */}
           {isCreatingNewQ ? (
             <motion.div
               initial={{ opacity: 0, x: -10 }}
@@ -464,7 +504,7 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                   />
                 </div>
 
-                {/* Photo upload for Question */}
+                {/* Photo upload */}
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
                     문제 사진 / 손글씨 첨부 (선택)
@@ -550,24 +590,33 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsCreatingNewQ(false)}
+                    disabled={isSubmittingQ}
                     className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
                   >
                     취소
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-md flex items-center gap-1.5"
+                    disabled={isSubmittingQ}
+                    className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-md flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>질문 등록하기</span>
+                    {isSubmittingQ ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>DB 저장 중...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>질문 등록하기</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
             </motion.div>
           ) : selectedQuestion ? (
-            /* ========================================================== */
             /* VIEW 2: QUESTION DETAIL & TEACHER ANSWER VIEW */
-            /* ========================================================== */
             <motion.div
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -594,17 +643,15 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                         <span className="text-[11px] font-black text-rose-800">정말 삭제?</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            onDeleteQuestion(selectedQuestion.id);
-                            setSelectedQuestion(null);
-                            setConfirmDeleteQ(false);
-                          }}
-                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black shadow-xs"
+                          disabled={isDeleting}
+                          onClick={() => handleDelete(selectedQuestion.id)}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-black shadow-xs flex items-center gap-1"
                         >
-                          삭제
+                          {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : '삭제'}
                         </button>
                         <button
                           type="button"
+                          disabled={isDeleting}
                           onClick={() => setConfirmDeleteQ(false)}
                           className="px-1.5 py-0.5 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-bold border border-slate-300"
                         >
@@ -722,9 +769,7 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                 </div>
               </div>
 
-              {/* ========================================================== */}
               {/* TEACHER ANSWER DISPLAY SECTION */}
-              {/* ========================================================== */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
@@ -769,8 +814,8 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                         disabled={isAiDrafting}
                         className="px-2.5 py-1 bg-white text-amber-800 border border-amber-300 hover:bg-amber-100 rounded-lg text-[11px] font-black flex items-center gap-1 shadow-2xs"
                       >
-                        <Sparkles className="w-3 h-3 text-amber-600" />
-                        <span>{isAiDrafting ? 'AI 해설 초안 작성 중...' : 'AI 초안 불러오기'}</span>
+                        {isAiDrafting ? <Loader2 className="w-3 h-3 animate-spin text-amber-600" /> : <Sparkles className="w-3 h-3 text-amber-600" />}
+                        <span>{isAiDrafting ? 'AI 해설 작성 중...' : 'AI 초안 불러오기'}</span>
                       </button>
                     </div>
 
@@ -944,16 +989,27 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsAnswering(false)}
+                        disabled={isSubmittingAns}
                         className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-bold"
                       >
                         취소
                       </button>
                       <button
                         type="submit"
-                        className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black shadow-md flex items-center gap-1.5"
+                        disabled={isSubmittingAns}
+                        className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black shadow-md flex items-center gap-1.5 disabled:opacity-50"
                       >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>선생님 답변 등록하기</span>
+                        {isSubmittingAns ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>DB 저장 중...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>선생님 답변 등록하기</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </motion.form>
@@ -986,12 +1042,10 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                       </span>
                     </div>
 
-                    {/* Answer Text */}
                     <div className="text-xs sm:text-sm text-slate-800 font-semibold leading-relaxed whitespace-pre-wrap">
                       {selectedQuestion.teacherAnswer.answerText}
                     </div>
 
-                    {/* Key Formula Box */}
                     {selectedQuestion.teacherAnswer.keyFormula && (
                       <div className="p-3 bg-amber-100/70 border border-amber-300 rounded-xl text-xs font-black text-amber-950 flex items-center gap-2 font-mono">
                         <span className="text-sm">🔑</span>
@@ -999,7 +1053,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                       </div>
                     )}
 
-                    {/* Teacher Answer Attached Photo */}
                     {selectedQuestion.teacherAnswer.imageUrl && (
                       <div className="space-y-1.5 pt-1">
                         <div className="flex items-center justify-between text-xs font-black text-amber-950">
@@ -1027,7 +1080,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                       </div>
                     )}
 
-                    {/* Solution Steps if available */}
                     {selectedQuestion.teacherAnswer.solutionSteps &&
                       selectedQuestion.teacherAnswer.solutionSteps.length > 0 && (
                         <div className="space-y-2 pt-1">
@@ -1062,7 +1114,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                         </div>
                       )}
 
-                    {/* Teacher Tip Box */}
                     {selectedQuestion.teacherAnswer.teacherTip && (
                       <div className="p-3 bg-gradient-to-r from-amber-100/90 to-yellow-100/80 border border-amber-300 rounded-xl text-xs text-amber-950 font-bold flex items-start gap-2">
                         <Lightbulb className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -1083,7 +1134,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                       우리 학교 선생님이 질문을 검토한 후 상세한 단계별 풀이와 팁을 달아주실 예정입니다.
                     </p>
 
-                    {/* STUDENT ROLE NOTICE */}
                     {userProfile.role === 'student' && (
                       <div className="mt-3 p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-[11px] text-blue-800 font-bold inline-flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5 text-blue-600" />
@@ -1095,11 +1145,8 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
               </div>
             </motion.div>
           ) : (
-            /* ========================================================== */
             /* VIEW 3: COMMUNITY QUESTIONS LIST */
-            /* ========================================================== */
             <div className="space-y-4">
-              {/* Search & Filter Bar */}
               <div className="space-y-2">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
@@ -1121,7 +1168,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  {/* Status Filter Tabs */}
                   <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-black">
                     <button
                       onClick={() => setActiveTab('all')}
@@ -1157,7 +1203,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Subject Filter */}
                   <div className="flex items-center gap-1 text-xs font-bold">
                     <button
                       onClick={() => setSelectedSubject('all')}
@@ -1264,7 +1309,6 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
                         {q.content}
                       </p>
 
-                      {/* Footer Info & Admin Action Hint */}
                       <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                         <div className="flex items-center gap-1.5 text-slate-500 font-medium text-[11px]">
                           <span>👤 {q.authorName}</span>

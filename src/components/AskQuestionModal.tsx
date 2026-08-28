@@ -14,10 +14,11 @@ import {
   SwitchCamera,
   RotateCcw,
   ScanLine,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SubjectType, GradeType, AIQuestionResult, ProblemItem, CommunityQuestion } from '../types';
+import { dbSaveQnaQuestion } from '../services/dbService';
 
 interface AskQuestionModalProps {
   initialProblem?: ProblemItem | null;
@@ -87,7 +88,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
     setIsCameraStarting(true);
     setErrorMsg(null);
 
-    // Stop any existing stream first
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -106,7 +106,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
         });
       } catch (firstErr) {
         console.warn('Fallback to basic video constraint:', firstErr);
-        // Fallback without strict facingMode
         stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: false,
@@ -127,7 +126,7 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
       setErrorMsg(
         '카메라 권한을 확인해주세요. (브라우저 설정에서 카메라 권한을 허용하거나 스마트폰 기본 카메라 앱으로 촬영할 수 있습니다.)'
       );
-    } finally {
+    } fontally {
       setIsCameraStarting(false);
     }
   };
@@ -149,7 +148,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
   const capturePhoto = () => {
     if (!videoRef.current) return;
 
-    // Trigger visual shutter flash
     setIsFlashing(true);
     setTimeout(() => setIsFlashing(false), 200);
 
@@ -399,7 +397,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                 {/* Camera Live Stream if active */}
                 {isCameraActive ? (
                   <div className="relative rounded-3xl overflow-hidden bg-slate-950 border-2 border-amber-400 aspect-[4/3] flex flex-col items-center justify-between p-3 sm:p-4 shadow-xl">
-                    {/* Visual White Flash Effect */}
                     <AnimatePresence>
                       {isFlashing && (
                         <motion.div
@@ -412,7 +409,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       )}
                     </AnimatePresence>
 
-                    {/* Live Video Feed */}
                     <video
                       ref={videoRef}
                       autoPlay
@@ -426,27 +422,22 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       }`}
                     />
 
-                    {/* Viewfinder Target & Corner Brackets Overlay */}
                     <div className="absolute inset-4 sm:inset-6 pointer-events-none z-10 flex flex-col justify-between">
-                      {/* Top corners */}
                       <div className="flex justify-between">
                         <div className="w-6 h-6 border-t-3 border-l-3 border-amber-400 rounded-tl-lg shadow-sm" />
                         <div className="w-6 h-6 border-t-3 border-r-3 border-amber-400 rounded-tr-lg shadow-sm" />
                       </div>
 
-                      {/* Center Scan Guide */}
                       <div className="text-center px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-xs text-amber-200 text-[11px] font-bold self-center border border-amber-400/40">
                         📐 문제 지문과 수식을 사각형 안에 맞춰주세요
                       </div>
 
-                      {/* Bottom corners */}
                       <div className="flex justify-between">
                         <div className="w-6 h-6 border-b-3 border-l-3 border-amber-400 rounded-bl-lg shadow-sm" />
                         <div className="w-6 h-6 border-b-3 border-r-3 border-amber-400 rounded-br-lg shadow-sm" />
                       </div>
                     </div>
 
-                    {/* Top Controls Bar */}
                     <div className="relative z-20 w-full flex items-center justify-between">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-[11px] font-black border border-white/20">
                         <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -454,7 +445,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {/* Switch Camera Button */}
                         <button
                           type="button"
                           onClick={toggleFacingMode}
@@ -476,7 +466,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Bottom Shutter Action Bar */}
                     <div className="relative z-20 w-full flex items-center justify-center pt-2">
                       <div className="flex items-center gap-4">
                         <button
@@ -493,7 +482,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                     </div>
                   </div>
                 ) : imagePreview ? (
-                  /* Photo Preview */
                   <div className="relative rounded-2xl overflow-hidden border-2 border-amber-300 bg-white p-3 flex flex-col items-center space-y-3">
                     <div className="relative w-full max-h-64 rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
                       <img
@@ -533,7 +521,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                     </div>
                   </div>
                 ) : (
-                  /* Drag & Drop or Button trigger zone */
                   <div
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
@@ -551,7 +538,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       </p>
                     </div>
 
-                    {/* Action buttons: Live Camera / Mobile Native Camera / File Gallery */}
                     <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
                       <button
                         type="button"
@@ -572,7 +558,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                         )}
                       </button>
 
-                      {/* Native Mobile Camera direct button */}
                       <button
                         type="button"
                         onClick={() => nativeCameraInputRef.current?.click()}
@@ -582,7 +567,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                         <span>기본 카메라 앱 실행</span>
                       </button>
 
-                      {/* File Gallery */}
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -593,7 +577,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       </button>
                     </div>
 
-                    {/* Hidden input for regular file upload */}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -602,7 +585,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                       className="hidden"
                     />
 
-                    {/* Hidden input with capture attribute for native mobile camera */}
                     <input
                       ref={nativeCameraInputRef}
                       type="file"
@@ -663,7 +645,6 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
           {/* RESULT DISPLAY (When solved!) */}
           {result && (
             <div className="space-y-4">
-              {/* Question Header & Title */}
               <div className="p-4 bg-white rounded-2xl border-2 border-amber-200 shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">
@@ -772,19 +753,34 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                   <button
                     type="button"
                     disabled={hasPostedToCommunity}
-                    onClick={() => {
+                    onClick={async () => {
+                      const authorName = userProfile?.nickname || '화원고열공이';
+                      const titleStr = result.problemTitle || '질문한 문제';
+                      const contentStr = result.extractedProblemText || result.summary;
+                      const imageStr = result.userImage || '';
+
+                      // 1. Supabase DB 영구 저장
+                      await dbSaveQnaQuestion({
+                        userName: authorName,
+                        title: titleStr,
+                        content: contentStr,
+                        subject: subject,
+                        imageUrl: imageStr,
+                      });
+
+                      // 2. 화면 상태 및 리액트 콜백 전달
                       const newCommQ: CommunityQuestion = {
                         id: `q-${Date.now()}`,
                         authorId: userProfile?.id || 'student-1',
-                        authorName: userProfile?.nickname || '화원고열공이',
+                        authorName: authorName,
                         authorRole: userProfile?.role || 'student',
                         authorSchool: userProfile?.schoolName || '대구화원고등학교',
                         authorGrade: userProfile?.grade || 'high_1',
                         subject: subject,
                         textbookRef: `${subject === 'math' ? '수학' : '과학'} 교과서 질문`,
-                        title: result.problemTitle || '질문한 문제',
-                        content: result.extractedProblemText || result.summary,
-                        imageUrl: result.userImage,
+                        title: titleStr,
+                        content: contentStr,
+                        imageUrl: imageStr,
                         createdAt: new Date().toLocaleDateString('ko-KR', {
                           month: 'numeric',
                           day: 'numeric',
@@ -794,7 +790,10 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
                         status: 'waiting',
                         likes: 1,
                       };
-                      onPostToCommunity(newCommQ);
+
+                      if (onPostToCommunity) {
+                        onPostToCommunity(newCommQ);
+                      }
                       setHasPostedToCommunity(true);
                     }}
                     className={`px-3.5 py-2 rounded-xl text-xs font-black shrink-0 flex items-center gap-1.5 transition-all ${
