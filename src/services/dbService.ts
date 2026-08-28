@@ -350,29 +350,3 @@ export async function dbSaveTextbookQuestion(item: TextbookQuestionInput) {
   }
   return { success: true, data };
 }
-
-export async function dbFetchTextbookQuestions() {
-  const { data, error } = await supabase
-    .from('textbook_questions')
-    .select('*')
-    .order('id', { ascending: true });
-
-  if (error) {
-    console.error('교과서 문제 불러오기 오류:', error);
-    return [];
-  }
-  return data || [];
-}
-
-export async function dbDeleteTextbookQuestion(id: number | string) {
-  const { error } = await supabase
-    .from('textbook_questions')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('교과서 문제 삭제 오류:', error);
-    return { success: false, error: error.message };
-  }
-  return { success: true };
-}
