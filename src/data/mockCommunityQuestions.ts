@@ -89,3 +89,4 @@ export async function saveTeacherAnswer(questionId: number | string, answerConte
     return { success: false, error: err.message };
   }
 }
+export default mockCommunityQuestions;

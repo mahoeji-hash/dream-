@@ -5,7 +5,7 @@ import {
   SubjectType 
 } from './types';
 import
-  mockCommunityQuestions 
+  {mockCommunityQuestions }
  from './data/mockCommunityQuestions';
 import { 
   dbFetchCommunityQuestions, 
