@@ -2961,3 +2961,4 @@ export const TextbookMasterView: React.FC<TextbookMasterViewProps> = ({
     </div>
   );
 };
+export default TextbookMasterView;
