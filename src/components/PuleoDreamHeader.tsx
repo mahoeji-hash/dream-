@@ -144,3 +144,4 @@ export const PuleoDreamHeader: React.FC<PuleoDreamHeaderProps> = ({
     </div>
   );
 };
+export default PuleoDreamHeader;
