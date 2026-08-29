@@ -154,3 +154,4 @@ export const ProblemDiagram: React.FC<ProblemDiagramProps> = ({ type, label }) =
     </div>
   );
 };
+export default ProblemDiagram;

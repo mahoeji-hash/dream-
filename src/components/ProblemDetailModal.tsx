@@ -598,3 +598,4 @@ export const ProblemDetailModal: React.FC<ProblemDetailModalProps> = ({
     </div>
   );
 };
+export default ProblemDetailModal;

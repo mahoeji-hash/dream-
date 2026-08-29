@@ -928,3 +928,4 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     </div>
   );
 };
+export default UserProfileModal;

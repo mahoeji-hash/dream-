@@ -1387,3 +1387,4 @@ export const CommunityQnAModal: React.FC<CommunityQnAModalProps> = ({
     </div>
   );
 };
+export default CommunityQnAModal;

@@ -772,3 +772,4 @@ export const InterestingFactsGallery: React.FC<InterestingFactsGalleryProps> = (
     </div>
   );
 };
+export default InterestingFactsGallery;

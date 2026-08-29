@@ -894,3 +894,4 @@ export const AskQuestionModal: React.FC<AskQuestionModalProps> = ({
     </div>
   );
 };
+export default AskQuestionModal;
