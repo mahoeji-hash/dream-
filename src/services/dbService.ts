@@ -296,11 +296,18 @@ export async function dbDeleteTextbookQuestion(id: number | string) {
 export async function dbSaveCommunityQuestion(question: any) {
   const { data, error } = await supabase.from('community_questions').insert([
     {
-      user_name: question.userName || '익명',
-      title: question.title || '',
-      content: question.content || '',
-      category: question.category || '자유',
-      image_url: question.imageUrl || '',
+      author_id: question.authorId,
+      author_name: question.authorName,
+      author_role: question.authorRole,
+      author_school: question.authorSchool,
+      author_grade: question.authorGrade,
+      subject: question.subject,
+      textbook_ref: question.textbookRef || null,
+      title: question.title,
+      content: question.content,
+      image_url: question.imageUrl || null,
+      status: 'waiting',
+      likes: 0,
     },
   ]).select();
 
@@ -322,4 +329,55 @@ export async function dbFetchCommunityQuestions() {
     return [];
   }
   return data || [];
+}
+
+export async function dbAnswerCommunityQuestion(questionId: string, answer: any) {
+  const { data, error } = await supabase
+    .from('community_questions')
+    .update({
+      status: 'answered',
+      teacher_answer: answer,
+    })
+    .eq('id', questionId)
+    .select();
+
+  if (error) {
+    console.error('선생님 답변 저장 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true, data };
+}
+
+export async function dbDeleteCommunityQuestion(questionId: string) {
+  const { error } = await supabase
+    .from('community_questions')
+    .delete()
+    .eq('id', questionId);
+
+  if (error) {
+    console.error('커뮤니티 질문 삭제 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+export async function dbToggleLikeCommunityQuestion(questionId: string, increment: boolean) {
+  const { data: current } = await supabase
+    .from('community_questions')
+    .select('likes')
+    .eq('id', questionId)
+    .single();
+
+  const newLikes = Math.max(0, (current?.likes || 0) + (increment ? 1 : -1));
+
+  const { error } = await supabase
+    .from('community_questions')
+    .update({ likes: newLikes })
+    .eq('id', questionId);
+
+  if (error) {
+    console.error('좋아요 업데이트 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
 }

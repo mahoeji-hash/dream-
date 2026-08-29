@@ -1,59 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  CommunityQuestion, 
-  UserProfile, 
-  SubjectType,
-  TextbookInfo,
-  ProblemItem
+import { AnimatePresence, motion } from 'motion/react';
+import { TEXTBOOKS } from './data/mockTextbooks';
+import { getStoredInterestingFacts } from './data/mockInterestingFacts';
+import {
+  ProblemItem,
+  UserProfile,
+  AIQuestionResult,
+  CommunityQuestion,
+  TeacherAnswer,
+  InterestingFactItem,
+  QuizAttemptRecord,
 } from './types';
-import
-  {mockCommunityQuestions }
- from './data/mockCommunityQuestions';
-import { 
-  dbFetchCommunityQuestions, 
-  dbSaveCommunityQuestion, 
+import { getStoredAccounts } from './services/authService';
+import {
   dbFetchTextbookProblems,
-  dbSaveTextbookProblem
+  dbSaveTextbookProblem,
+  dbFetchCommunityQuestions,
+  dbSaveCommunityQuestion,
+  dbAnswerCommunityQuestion,
+  dbDeleteCommunityQuestion,
+  dbToggleLikeCommunityQuestion,
 } from './services/dbService';
+import { HomeScreen } from './components/HomeScreen';
+import { TextbookMasterView } from './components/TextbookMasterView';
+import { ProblemDetailModal } from './components/ProblemDetailModal';
+import { AskQuestionModal } from './components/AskQuestionModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { CommunityQnAModal } from './components/CommunityQnAModal';
+import { LoginScreen } from './components/LoginScreen';
 
-// 컴포넌트 불러오기
-import PuleoDreamHeader from './components/PuleoDreamHeader';
-import TextbookMasterView from './components/TextbookMasterView';
-import CommunityQnAModal from './components/CommunityQnAModal';
-import AskQuestionModal from './components/AskQuestionModal';
-import UnitTestModal from './components/UnitTestModal';
-import UserProfileModal from './components/UserProfileModal';
-import InterestingFactsGallery from './components/InterestingFactsGallery';
-import LoginScreen from './components/LoginScreen';
-import ProblemDetailModal from './components/ProblemDetailModal';
+const DEFAULT_PROFILE: UserProfile = {
+  role: 'student',
+  nickname: '화원고열공이',
+  schoolName: '대구화원고등학교',
+  grade: 'high_1',
+  avatarSeed: 'puppy',
+  solvedCount: 0,
+  helpedCount: 0,
+  bookmarkedProblemIds: [],
+  historyQuestions: [],
+  quizAttempts: [],
+  wrongQuizQuestions: [],
+};
 
-// 기본 교과서 목록 (DB에 별도 테이블이 없어서 코드에 고정으로 정의)
-const DEFAULT_TEXTBOOKS: TextbookInfo[] = [
-  {
-    id: 'tb-math-mr-h2',
-    name: '미래엔 공통수학 2',
-    publisher: '미래엔',
-    subject: 'math',
-    grade: 'high_1',
-    category: '교과서',
-    color: '#2563EB',
-    badgeText: '수학',
-    totalChapters: 5,
-  },
-  {
-    id: 'tb-sci-bs-h1',
-    name: '비상교육 통합과학 2',
-    publisher: '비상교육',
-    subject: 'science',
-    grade: 'high_1',
-    category: '교과서',
-    color: '#059669',
-    badgeText: '과학',
-    totalChapters: 5,
-  },
-];
-
-// DB row(snake_case) -> ProblemItem(camelCase) 변환 함수
+// DB row(snake_case) -> ProblemItem(camelCase) 변환
 function mapDbRowToProblemItem(row: any): ProblemItem {
   return {
     id: String(row.id),
@@ -82,185 +72,377 @@ function mapDbRowToProblemItem(row: any): ProblemItem {
   };
 }
 
+// DB row(snake_case) -> CommunityQuestion(camelCase) 변환
+function mapDbRowToCommunityQuestion(row: any): CommunityQuestion {
+  return {
+    id: String(row.id),
+    authorId: row.author_id || '',
+    authorName: row.author_name || '익명',
+    authorRole: row.author_role || 'student',
+    authorSchool: row.author_school || '',
+    authorGrade: row.author_grade || 'high_1',
+    subject: row.subject || 'math',
+    textbookRef: row.textbook_ref || undefined,
+    title: row.title || '',
+    content: row.content || '',
+    imageUrl: row.image_url || undefined,
+    createdAt: row.created_at
+      ? new Date(row.created_at).toLocaleDateString('ko-KR', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '',
+    status: row.status || 'waiting',
+    teacherAnswer: row.teacher_answer || undefined,
+    likes: row.likes || 0,
+  };
+}
+
 export default function App() {
-  // 1. 사용자 및 화면 상태
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
-    id: 'user-1',
-    role: 'student',
-    nickname: '열공학생',
-    schoolName: '대구화원고',
-    grade: 'high_1',
-    avatarSeed: 'user-1',
-    solvedCount: 0,
-    helpedCount: 0,
-    bookmarkedProblemIds: [],
-    historyQuestions: [],
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    const accounts = getStoredAccounts();
+    if (accounts.length === 0) {
+      localStorage.removeItem('puleo_is_logged_in');
+      localStorage.removeItem('puleo_user_profile');
+      return false;
+    }
+    const savedLogin = localStorage.getItem('puleo_is_logged_in');
+    return savedLogin === 'true';
   });
-  const [selectedSubject, setSelectedSubject] = useState<SubjectType>('math');
-  const [activeTab, setActiveTab] = useState<'textbook' | 'unittest' | 'facts'>('textbook');
 
-  // 2. DB 데이터 상태
-  const [communityQuestions, setCommunityQuestions] = useState<CommunityQuestion[]>(mockCommunityQuestions);
-  const [problems, setProblems] = useState<ProblemItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [bookmarkedProblemIds, setBookmarkedProblemIds] = useState<string[]>([]);
+  const [currentView, setCurrentView] = useState<'home' | 'math' | 'science'>('home');
   const [selectedProblem, setSelectedProblem] = useState<ProblemItem | null>(null);
+  const [isAskQuestionOpen, setIsAskQuestionOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isQnAOpen, setIsQnAOpen] = useState(false);
+  const [problemForAI, setProblemForAI] = useState<ProblemItem | null>(null);
 
-  // 3. 모달 제어 상태
-  const [isQnAModalOpen, setIsQnAModalOpen] = useState<boolean>(false);
-  const [isAskModalOpen, setIsAskModalOpen] = useState<boolean>(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
-  const [isUnitTestModalOpen, setIsUnitTestModalOpen] = useState<boolean>(false);
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [communityQuestions, setCommunityQuestions] = useState<CommunityQuestion[]>([]);
+  const [interestingFacts, setInterestingFacts] = useState<InterestingFactItem[]>([]);
 
-  // 교과서 문제 DB 재로드 함수
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('puleo_user_profile');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_PROFILE,
+          ...parsed,
+          bookmarkedProblemIds: Array.isArray(parsed.bookmarkedProblemIds) ? parsed.bookmarkedProblemIds : [],
+          quizAttempts: Array.isArray(parsed.quizAttempts) ? parsed.quizAttempts : [],
+          wrongQuizQuestions: Array.isArray(parsed.wrongQuizQuestions) ? parsed.wrongQuizQuestions : [],
+        };
+      } catch (e) {
+        return DEFAULT_PROFILE;
+      }
+    }
+    return DEFAULT_PROFILE;
+  });
+
+  // Supabase 데이터 로드
+  useEffect(() => {
+    async function fetchAllData() {
+      try {
+        const [problemRows, qnaRows] = await Promise.all([
+          dbFetchTextbookProblems(),
+          dbFetchCommunityQuestions(),
+        ]);
+        setProblems(problemRows.map(mapDbRowToProblemItem));
+        setCommunityQuestions(qnaRows.map(mapDbRowToCommunityQuestion));
+        setInterestingFacts(getStoredInterestingFacts());
+      } catch (error) {
+        console.error('데이터 로드 실패:', error);
+      }
+    }
+
+    if (isLoggedIn) {
+      fetchAllData();
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    localStorage.setItem('puleo_user_profile', JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('puleo_is_logged_in', isLoggedIn ? 'true' : 'false');
+  }, [isLoggedIn]);
+
+  const handleLoginSuccess = (profile: UserProfile) => {
+    setUserProfile(profile);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setIsProfileOpen(false);
+    setIsQnAOpen(false);
+    setCurrentView('home');
+  };
+
+  const handleToggleBookmark = (problemId: string) => {
+    setUserProfile((prev) => {
+      const exists = prev.bookmarkedProblemIds.includes(problemId);
+      const updated = exists
+        ? prev.bookmarkedProblemIds.filter((id) => id !== problemId)
+        : [...prev.bookmarkedProblemIds, problemId];
+      return { ...prev, bookmarkedProblemIds: updated };
+    });
+  };
+
+  const handleSaveAIQuestionResult = (result: AIQuestionResult) => {
+    setUserProfile((prev) => ({
+      ...prev,
+      historyQuestions: [result, ...prev.historyQuestions],
+      solvedCount: prev.solvedCount + 1,
+    }));
+  };
+
+  const handleCompleteQuiz = (attempt: QuizAttemptRecord) => {
+    setUserProfile((prev) => {
+      const currentAttempts = prev.quizAttempts || [];
+      const currentWrong = prev.wrongQuizQuestions || [];
+      const updatedAttempts = [attempt, ...currentAttempts];
+      const newWrongIds = new Set(attempt.wrongAnswers.map((w) => w.questionId));
+      const remainingOldWrong = currentWrong.filter((w) => {
+        if (w.quizId === attempt.quizId) return newWrongIds.has(w.questionId);
+        return true;
+      });
+      const updatedWrong = [
+        ...attempt.wrongAnswers,
+        ...remainingOldWrong.filter((w) => !newWrongIds.has(w.questionId)),
+      ];
+      return {
+        ...prev,
+        solvedCount: prev.solvedCount + 1,
+        quizAttempts: updatedAttempts,
+        wrongQuizQuestions: updatedWrong,
+      };
+    });
+  };
+
+  // 교과서 문제 (Supabase)
   const handleRefreshProblems = async () => {
     const rows = await dbFetchTextbookProblems();
     setProblems(rows.map(mapDbRowToProblemItem));
   };
 
-  // 4. 앱 로딩 시 Supabase DB 데이터 불러오기
-  useEffect(() => {
-    async function loadAllDbData() {
-      setIsLoading(true);
-      try {
-        const qnaData = await dbFetchCommunityQuestions();
-        if (qnaData && qnaData.length > 0) {
-          setCommunityQuestions(qnaData);
-        }
-
-        const problemRows = await dbFetchTextbookProblems();
-        setProblems(problemRows.map(mapDbRowToProblemItem));
-      } catch (error) {
-        console.error('DB 데이터를 불러오는 중 오류 발생:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    loadAllDbData();
-  }, []);
-
-  // 5. 질문 추가 핸들러 (커뮤니티 Q&A)
-  const handleAddQuestion = async (newQuestion: any) => {
-    const res = await dbSaveCommunityQuestion(newQuestion);
-    if (res.success) {
-      const refreshed = await dbFetchCommunityQuestions();
-      setCommunityQuestions(refreshed);
-      setIsAskModalOpen(false);
-    } else {
-      alert(`질문 저장 실패: ${res.error}`);
-    }
-  };
-
-  // 6. 교과서 문제 추가 핸들러 (단일)
-  const handleAddNewProblem = async (newProblem: ProblemItem) => {
-    const res = await dbSaveTextbookProblem(newProblem);
+  const handleAddNewProblem = async (newProb: ProblemItem, autoOpen = false) => {
+    const res = await dbSaveTextbookProblem(newProb);
     if (res.success) {
       await handleRefreshProblems();
+      if (autoOpen) setSelectedProblem(newProb);
     } else {
       alert(`문제 저장 실패: ${res.error}`);
     }
   };
 
-  // 7. 교과서 문제 추가 핸들러 (일괄)
-  const handleAddNewProblems = async (newProblems: ProblemItem[]) => {
-    for (const p of newProblems) {
+  const handleAddNewProblems = async (newProbs: ProblemItem[]) => {
+    if (!newProbs || newProbs.length === 0) return;
+    for (const p of newProbs) {
       await dbSaveTextbookProblem(p);
     }
     await handleRefreshProblems();
   };
 
-  const handleToggleBookmark = (problemId: string) => {
-    setBookmarkedProblemIds((prev) =>
-      prev.includes(problemId) ? prev.filter((id) => id !== problemId) : [...prev, problemId]
+  const handleDeleteProblem = (problemId: string) => {
+    setProblems((prev) => prev.filter((p) => p.id !== problemId));
+    if (selectedProblem?.id === problemId) {
+      setSelectedProblem(null);
+    }
+  };
+
+  // 흥미로운 사실 (로컬)
+  const handleAddNewFact = (newFact: InterestingFactItem) => {
+    setInterestingFacts((prev) => [newFact, ...prev]);
+  };
+
+  const handleDeleteFact = (factId: string) => {
+    setInterestingFacts((prev) => prev.filter((f) => f.id !== factId));
+  };
+
+  const handleToggleLikeFact = (factId: string) => {
+    const activeUserId = userProfile.id || userProfile.loginId || 'user_account_default';
+    setInterestingFacts((prev) =>
+      prev.map((f) => {
+        if (f.id !== factId) return f;
+        const currentLikedUsers = Array.isArray(f.likedUserIds) ? f.likedUserIds : [];
+        const isAlreadyLiked = currentLikedUsers.includes(activeUserId);
+        if (isAlreadyLiked) {
+          return {
+            ...f,
+            likes: Math.max(0, (f.likes || 1) - 1),
+            likedUserIds: currentLikedUsers.filter((uid) => uid !== activeUserId),
+          };
+        }
+        return {
+          ...f,
+          likes: (f.likes || 0) + 1,
+          likedUserIds: [...currentLikedUsers, activeUserId],
+        };
+      })
     );
   };
 
-  // 미로그인 상태 처리
-  if (!currentUser) {
-    return <LoginScreen onLogin={(user: UserProfile) => setCurrentUser(user)} />;
+  // 커뮤니티 Q&A (Supabase)
+  const handleAddCommunityQuestion = async (newQ: any) => {
+    const res = await dbSaveCommunityQuestion(newQ);
+    if (res.success) {
+      const rows = await dbFetchCommunityQuestions();
+      setCommunityQuestions(rows.map(mapDbRowToCommunityQuestion));
+    } else {
+      alert(`질문 저장 실패: ${res.error}`);
+    }
+  };
+
+  const handleAnswerCommunityQuestion = async (questionId: string, answer: TeacherAnswer) => {
+    const res = await dbAnswerCommunityQuestion(questionId, answer);
+    if (res.success) {
+      const rows = await dbFetchCommunityQuestions();
+      setCommunityQuestions(rows.map(mapDbRowToCommunityQuestion));
+    } else {
+      alert(`답변 저장 실패: ${res.error}`);
+    }
+  };
+
+  const handleDeleteCommunityQuestion = async (questionId: string) => {
+    const res = await dbDeleteCommunityQuestion(questionId);
+    if (res.success) {
+      setCommunityQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    }
+  };
+
+  const handleToggleLikeCommunityQuestion = async (questionId: string, isLiked: boolean) => {
+    await dbToggleLikeCommunityQuestion(questionId, !isLiked);
+  };
+
+  const handleAskAIAboutSpecificProblem = (problem: ProblemItem) => {
+    setProblemForAI(problem);
+    setSelectedProblem(null);
+    setIsAskQuestionOpen(true);
+  };
+
+  const handleSelectHistoryQuestion = (historyItem: AIQuestionResult) => {
+    setProblemForAI(null);
+    setIsAskQuestionOpen(true);
+  };
+
+  const waitingCount = (Array.isArray(communityQuestions) ? communityQuestions : []).filter(
+    (q) => q.status === 'waiting'
+  ).length;
+
+  if (!isLoggedIn) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const activeTextbook = DEFAULT_TEXTBOOKS.find((tb) => tb.subject === selectedSubject);
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
-      {/* 헤더 바 */}
-      <PuleoDreamHeader
-        onOpenProfile={() => setIsProfileModalOpen(true)}
-        userRole={currentUser.role}
-        isHome={activeTab === 'textbook'}
-      />
+    <div id="puleo-dream-app" className="min-h-screen bg-[#F8F5EE] bg-[radial-gradient(#E8DFCA_1px,transparent_1px)] [background-size:24px_24px] text-slate-800 flex flex-col justify-between selection:bg-amber-200">
+      <main className="flex-1 w-full flex flex-col items-center justify-start py-2 sm:py-4">
+        <AnimatePresence mode="wait">
+          {currentView === 'home' && (
+            <motion.div key="home" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full">
+              <HomeScreen
+                onSelectMath={() => setCurrentView('math')}
+                onSelectScience={() => setCurrentView('science')}
+                onSelectAskQuestion={() => {
+                  setProblemForAI(null);
+                  setIsAskQuestionOpen(true);
+                }}
+                onSelectQnA={() => setIsQnAOpen(true)}
+                onOpenProfile={() => setIsProfileOpen(true)}
+                onLogout={handleLogout}
+                userRole={userProfile.role}
+                solvedCount={userProfile.solvedCount}
+                waitingQuestionsCount={waitingCount}
+              />
+            </motion.div>
+          )}
 
-      {/* 메인 구역 */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
-        <TextbookMasterView
-          subject={selectedSubject}
-          textbooks={DEFAULT_TEXTBOOKS}
-          problems={problems}
-          bookmarkedProblemIds={bookmarkedProblemIds}
-          userRole={currentUser.role}
-          currentUserId={currentUser.id}
-          onSelectProblem={(problem) => setSelectedProblem(problem)}
-          onGoBack={() => {}}
-          onAddNewProblem={handleAddNewProblem}
-          onAddNewProblems={handleAddNewProblems}
-        />
+          {(currentView === 'math' || currentView === 'science') && (
+            <motion.div key={currentView} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="w-full">
+              <TextbookMasterView
+                subject={currentView}
+                textbooks={TEXTBOOKS}
+                problems={problems}
+                bookmarkedProblemIds={userProfile.bookmarkedProblemIds}
+                userRole={userProfile.role}
+                currentUserId={userProfile.id || userProfile.loginId || 'user_account_default'}
+                facts={interestingFacts}
+                onSelectProblem={(prob) => setSelectedProblem(prob)}
+                onGoBack={() => setCurrentView('home')}
+                onAddNewProblem={handleAddNewProblem}
+                onAddNewProblems={handleAddNewProblems}
+                onDeleteProblem={handleDeleteProblem}
+                onAddNewFact={handleAddNewFact}
+                onDeleteFact={handleDeleteFact}
+                onToggleLikeFact={handleToggleLikeFact}
+                onCompleteQuiz={handleCompleteQuiz}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
 
-      {/* 문제 상세 모달 */}
-      {selectedProblem && (
-        <ProblemDetailModal
-          problem={selectedProblem}
-          textbook={activeTextbook}
-          isBookmarked={bookmarkedProblemIds.includes(selectedProblem.id)}
-          userRole={currentUser.role}
-          onToggleBookmark={handleToggleBookmark}
-          onClose={() => setSelectedProblem(null)}
-          onAskAIAboutProblem={() => setIsAskModalOpen(true)}
-        />
-      )}
+      <AnimatePresence>
+        {selectedProblem && (
+          <ProblemDetailModal
+            problem={selectedProblem}
+            textbook={TEXTBOOKS.find((tb) => tb.id === selectedProblem.textbookId)}
+            isBookmarked={userProfile.bookmarkedProblemIds.includes(selectedProblem.id)}
+            userRole={userProfile.role}
+            onToggleBookmark={handleToggleBookmark}
+            onClose={() => setSelectedProblem(null)}
+            onAskAIAboutProblem={handleAskAIAboutSpecificProblem}
+            onDeleteProblem={userProfile.role === 'admin' ? handleDeleteProblem : undefined}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* 모달 모음 */}
-      {isQnAModalOpen && (
-        <CommunityQnAModal
-          isOpen={isQnAModalOpen}
-          onClose={() => setIsQnAModalOpen(false)}
-          questions={communityQuestions}
-          currentUser={currentUser}
-          onOpenAskModal={() => setIsAskModalOpen(true)}
-          onRefreshData={async () => {
-            const data = await dbFetchCommunityQuestions();
-            setCommunityQuestions(data);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {isAskQuestionOpen && (
+          <AskQuestionModal
+            initialProblem={problemForAI}
+            userProfile={userProfile}
+            onClose={() => {
+              setIsAskQuestionOpen(false);
+              setProblemForAI(null);
+            }}
+            onSaveToHistory={handleSaveAIQuestionResult}
+            onPostToCommunity={handleAddCommunityQuestion}
+          />
+        )}
+      </AnimatePresence>
 
-      {isAskModalOpen && (
-        <AskQuestionModal
-          isOpen={isAskModalOpen}
-          onClose={() => setIsAskModalOpen(false)}
-          onSubmit={handleAddQuestion}
-          currentUser={currentUser}
-        />
-      )}
+      <AnimatePresence>
+        {isQnAOpen && (
+          <CommunityQnAModal
+            userProfile={userProfile}
+            questions={communityQuestions}
+            onClose={() => setIsQnAOpen(false)}
+            onAddQuestion={handleAddCommunityQuestion}
+            onAnswerQuestion={handleAnswerCommunityQuestion}
+            onDeleteQuestion={userProfile.role === 'admin' ? handleDeleteCommunityQuestion : undefined}
+            onToggleLike={handleToggleLikeCommunityQuestion}
+          />
+        )}
+      </AnimatePresence>
 
-      {isProfileModalOpen && (
-        <UserProfileModal
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          currentUser={currentUser}
-          onUpdateUser={(updated: UserProfile) => setCurrentUser(updated)}
-        />
-      )}
-
-      {isUnitTestModalOpen && (
-        <UnitTestModal
-          isOpen={isUnitTestModalOpen}
-          onClose={() => setIsUnitTestModalOpen(false)}
-          subject={selectedSubject}
-        />
-      )}
+      <AnimatePresence>
+        {isProfileOpen && (
+          <UserProfileModal
+            userProfile={userProfile}
+            problems={problems}
+            onUpdateProfile={(updated) => setUserProfile((prev) => ({ ...prev, ...updated }))}
+            onSelectProblem={(prob) => setSelectedProblem(prob)}
+            onSelectHistoryQuestion={handleSelectHistoryQuestion}
+            onLogout={handleLogout}
+            onClose={() => setIsProfileOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
