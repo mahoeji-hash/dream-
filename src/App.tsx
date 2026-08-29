@@ -144,24 +144,25 @@ export default function App() {
 
   // Supabase 데이터 로드
   useEffect(() => {
-    async function fetchAllData() {
-      try {
-        const [problemRows, qnaRows] = await Promise.all([
-          dbFetchTextbookProblems(),
-          dbFetchCommunityQuestions(),
-        ]);
-        setProblems(problemRows.map(mapDbRowToProblemItem));
-        setCommunityQuestions(qnaRows.map(mapDbRowToCommunityQuestion));
-        setInterestingFacts(getStoredInterestingFacts());
-      } catch (error) {
-        console.error('데이터 로드 실패:', error);
-      }
+  async function fetchAllData() {
+    try {
+      const [problemRows, qnaRows, factsData] = await Promise.all([
+        dbFetchTextbookProblems(),
+        dbFetchCommunityQuestions(),
+        Promise.resolve(getStoredInterestingFacts()),
+      ]);
+      setProblems(problemRows.map(mapDbRowToProblemItem));
+      setCommunityQuestions(qnaRows.map(mapDbRowToCommunityQuestion));
+      setInterestingFacts(Array.isArray(factsData) ? factsData : []);
+    } catch (error) {
+      console.error('데이터 로드 실패:', error);
     }
+  }
 
-    if (isLoggedIn) {
-      fetchAllData();
-    }
-  }, [isLoggedIn]);
+  if (isLoggedIn) {
+    fetchAllData();
+  }
+}, [isLoggedIn]);
 
   useEffect(() => {
     localStorage.setItem('puleo_user_profile', JSON.stringify(userProfile));
