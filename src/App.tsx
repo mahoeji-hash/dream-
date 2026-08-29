@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   CommunityQuestion, 
   UserProfile, 
-  SubjectType 
+  SubjectType,
+  TextbookInfo,
+  ProblemItem
 } from './types';
 import
   {mockCommunityQuestions }
@@ -10,7 +12,8 @@ import
 import { 
   dbFetchCommunityQuestions, 
   dbSaveCommunityQuestion, 
-  dbFetchTextbookQuestions 
+  dbFetchTextbookProblems,
+  dbSaveTextbookProblem
 } from './services/dbService';
 
 // 컴포넌트 불러오기
@@ -22,22 +25,86 @@ import UnitTestModal from './components/UnitTestModal';
 import UserProfileModal from './components/UserProfileModal';
 import InterestingFactsGallery from './components/InterestingFactsGallery';
 import LoginScreen from './components/LoginScreen';
+import ProblemDetailModal from './components/ProblemDetailModal';
+
+// 기본 교과서 목록 (DB에 별도 테이블이 없어서 코드에 고정으로 정의)
+const DEFAULT_TEXTBOOKS: TextbookInfo[] = [
+  {
+    id: 'tb-math-mr-h2',
+    name: '미래엔 공통수학 2',
+    publisher: '미래엔',
+    subject: 'math',
+    grade: 'high_1',
+    category: '교과서',
+    color: '#2563EB',
+    badgeText: '수학',
+    totalChapters: 5,
+  },
+  {
+    id: 'tb-sci-bs-h1',
+    name: '비상교육 통합과학 2',
+    publisher: '비상교육',
+    subject: 'science',
+    grade: 'high_1',
+    category: '교과서',
+    color: '#059669',
+    badgeText: '과학',
+    totalChapters: 5,
+  },
+];
+
+// DB row(snake_case) -> ProblemItem(camelCase) 변환 함수
+function mapDbRowToProblemItem(row: any): ProblemItem {
+  return {
+    id: String(row.id),
+    textbookId: row.textbook_id || '',
+    subject: row.subject,
+    grade: row.grade || 'high_1',
+    chapter: row.chapter || '',
+    unitNumber: row.unit_number || 0,
+    unitName: row.unit_name || '',
+    subUnitId: row.sub_unit_id || undefined,
+    unitCode: row.unit_code || undefined,
+    pageNumber: row.page_number || 0,
+    problemNumber: row.problem_number || '',
+    problemType: row.problem_type || '중단원 마무리',
+    difficulty: row.difficulty || '보통',
+    problemText: row.problem_text || '',
+    solutionSteps: row.solution_steps || [],
+    finalAnswer: row.final_answer || '',
+    coreConcepts: row.core_concepts || [],
+    dreamTip: row.dream_tip || '',
+    solutionImage: row.solution_image || undefined,
+    peerTips: [],
+    studentSolutions: [],
+    views: row.views || 0,
+    likes: row.likes || 0,
+  };
+}
 
 export default function App() {
   // 1. 사용자 및 화면 상태
   const [currentUser, setCurrentUser] = useState<UserProfile | null>({
     id: 'user-1',
-    name: '열공학생',
     role: 'student',
-    profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'
+    nickname: '열공학생',
+    schoolName: '대구화원고',
+    grade: 'high_1',
+    avatarSeed: 'user-1',
+    solvedCount: 0,
+    helpedCount: 0,
+    bookmarkedProblemIds: [],
+    historyQuestions: [],
   });
   const [selectedSubject, setSelectedSubject] = useState<SubjectType>('math');
   const [activeTab, setActiveTab] = useState<'textbook' | 'unittest' | 'facts'>('textbook');
 
   // 2. DB 데이터 상태
   const [communityQuestions, setCommunityQuestions] = useState<CommunityQuestion[]>(mockCommunityQuestions);
-  const [textbookQuestions, setTextbookQuestions] = useState<any[]>([]);
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [bookmarkedProblemIds, setBookmarkedProblemIds] = useState<string[]>([]);
+  const [selectedProblem, setSelectedProblem] = useState<ProblemItem | null>(null);
 
   // 3. 모달 제어 상태
   const [isQnAModalOpen, setIsQnAModalOpen] = useState<boolean>(false);
@@ -46,11 +113,9 @@ export default function App() {
   const [isUnitTestModalOpen, setIsUnitTestModalOpen] = useState<boolean>(false);
 
   // 교과서 문제 DB 재로드 함수
-  const handleRefreshTextbookQuestions = async () => {
-    const textbookData = await dbFetchTextbookQuestions();
-    if (textbookData) {
-      setTextbookQuestions(textbookData);
-    }
+  const handleRefreshProblems = async () => {
+    const rows = await dbFetchTextbookProblems();
+    setProblems(rows.map(mapDbRowToProblemItem));
   };
 
   // 4. 앱 로딩 시 Supabase DB 데이터 불러오기
@@ -58,18 +123,13 @@ export default function App() {
     async function loadAllDbData() {
       setIsLoading(true);
       try {
-        // Q&A 목록 불러오기
         const qnaData = await dbFetchCommunityQuestions();
         if (qnaData && qnaData.length > 0) {
           setCommunityQuestions(qnaData);
         }
 
-        // 교과서 문제 DB 불러오기
-        const textbookData = await dbFetchTextbookQuestions();
-        if (textbookData && textbookData.length > 0) {
-          setTextbookQuestions(textbookData);
-          console.log('교과서 문제 DB 동기화 완료:', textbookData);
-        }
+        const problemRows = await dbFetchTextbookProblems();
+        setProblems(problemRows.map(mapDbRowToProblemItem));
       } catch (error) {
         console.error('DB 데이터를 불러오는 중 오류 발생:', error);
       } finally {
@@ -80,7 +140,7 @@ export default function App() {
     loadAllDbData();
   }, []);
 
-  // 5. 질문 추가 핸들러
+  // 5. 질문 추가 핸들러 (커뮤니티 Q&A)
   const handleAddQuestion = async (newQuestion: any) => {
     const res = await dbSaveCommunityQuestion(newQuestion);
     if (res.success) {
@@ -92,85 +152,74 @@ export default function App() {
     }
   };
 
+  // 6. 교과서 문제 추가 핸들러 (단일)
+  const handleAddNewProblem = async (newProblem: ProblemItem) => {
+    const res = await dbSaveTextbookProblem(newProblem);
+    if (res.success) {
+      await handleRefreshProblems();
+    } else {
+      alert(`문제 저장 실패: ${res.error}`);
+    }
+  };
+
+  // 7. 교과서 문제 추가 핸들러 (일괄)
+  const handleAddNewProblems = async (newProblems: ProblemItem[]) => {
+    for (const p of newProblems) {
+      await dbSaveTextbookProblem(p);
+    }
+    await handleRefreshProblems();
+  };
+
+  const handleToggleBookmark = (problemId: string) => {
+    setBookmarkedProblemIds((prev) =>
+      prev.includes(problemId) ? prev.filter((id) => id !== problemId) : [...prev, problemId]
+    );
+  };
+
   // 미로그인 상태 처리
   if (!currentUser) {
-    return <LoginScreen onLogin={(user) => setCurrentUser(user)} />;
+    return <LoginScreen onLogin={(user: UserProfile) => setCurrentUser(user)} />;
   }
+
+  const activeTextbook = DEFAULT_TEXTBOOKS.find((tb) => tb.subject === selectedSubject);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
       {/* 헤더 바 */}
       <PuleoDreamHeader
-        currentUser={currentUser}
-        selectedSubject={selectedSubject}
-        onSelectSubject={setSelectedSubject}
-        onOpenQnA={() => setIsQnAModalOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+        userRole={currentUser.role}
+        isHome={activeTab === 'textbook'}
       />
 
       {/* 메인 구역 */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
-        {/* 네비게이션 탭 */}
-        <div className="flex space-x-2 mb-6 border-b border-slate-200 pb-2">
-          <button
-            onClick={() => setActiveTab('textbook')}
-            className={`px-4 py-2 font-medium rounded-lg transition-colors ${
-              activeTab === 'textbook'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            교과서 풀이
-          </button>
-          <button
-            onClick={() => setActiveTab('unittest')}
-            className={`px-4 py-2 font-medium rounded-lg transition-colors ${
-              activeTab === 'unittest'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            단원 평가
-          </button>
-          <button
-            onClick={() => setActiveTab('facts')}
-            className={`px-4 py-2 font-medium rounded-lg transition-colors ${
-              activeTab === 'facts'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            재미있는 상식
-          </button>
-        </div>
-
-        {/* 탭 전환 뷰 */}
-        {activeTab === 'textbook' && (
-          <TextbookMasterView 
-            subject={selectedSubject}
-            textbookQuestions={textbookQuestions}
-            isLoading={isLoading}
-            onRefreshData={handleRefreshTextbookQuestions}
-          />
-        )}
-
-        {activeTab === 'unittest' && (
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center py-12">
-            <h3 className="text-xl font-bold mb-2">단원 평가 테스트</h3>
-            <p className="text-slate-500 mb-6">개념 복습 후 평가를 통해 나의 실력을 확인해보세요.</p>
-            <button
-              onClick={() => setIsUnitTestModalOpen(true)}
-              className="px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition"
-            >
-              단원 평가 시작하기
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'facts' && (
-          <InterestingFactsGallery subject={selectedSubject} />
-        )}
+        <TextbookMasterView
+          subject={selectedSubject}
+          textbooks={DEFAULT_TEXTBOOKS}
+          problems={problems}
+          bookmarkedProblemIds={bookmarkedProblemIds}
+          userRole={currentUser.role}
+          currentUserId={currentUser.id}
+          onSelectProblem={(problem) => setSelectedProblem(problem)}
+          onGoBack={() => {}}
+          onAddNewProblem={handleAddNewProblem}
+          onAddNewProblems={handleAddNewProblems}
+        />
       </main>
+
+      {/* 문제 상세 모달 */}
+      {selectedProblem && (
+        <ProblemDetailModal
+          problem={selectedProblem}
+          textbook={activeTextbook}
+          isBookmarked={bookmarkedProblemIds.includes(selectedProblem.id)}
+          userRole={currentUser.role}
+          onToggleBookmark={handleToggleBookmark}
+          onClose={() => setSelectedProblem(null)}
+          onAskAIAboutProblem={() => setIsAskModalOpen(true)}
+        />
+      )}
 
       {/* 모달 모음 */}
       {isQnAModalOpen && (
@@ -201,7 +250,7 @@ export default function App() {
           isOpen={isProfileModalOpen}
           onClose={() => setIsProfileModalOpen(false)}
           currentUser={currentUser}
-          onUpdateUser={(updated) => setCurrentUser(updated)}
+          onUpdateUser={(updated: UserProfile) => setCurrentUser(updated)}
         />
       )}
 
