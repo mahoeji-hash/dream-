@@ -1,5 +1,17 @@
 import { supabase } from '../supabaseClient';
-
+import {
+  dbFetchTextbookProblems,
+  dbSaveTextbookProblem,
+  dbFetchCommunityQuestions,
+  dbSaveCommunityQuestion,
+  dbAnswerCommunityQuestion,
+  dbDeleteCommunityQuestion,
+  dbToggleLikeCommunityQuestion,
+  dbFetchInterestingFacts,
+  dbSaveInterestingFact,
+  dbDeleteInterestingFact,
+  dbToggleLikeInterestingFact,
+} from './services/dbService';
 // ==========================================
 // 1. 교과서 문제 (Textbook Problems) DB 연동
 // ==========================================
@@ -374,6 +386,84 @@ export async function dbToggleLikeCommunityQuestion(questionId: string, incremen
     .from('community_questions')
     .update({ likes: newLikes })
     .eq('id', questionId);
+
+  if (error) {
+    console.error('좋아요 업데이트 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+// ==========================================
+// 7. 흥미로운 사실 포스터 (Interesting Facts) DB 연동
+// ==========================================
+
+export async function dbFetchInterestingFacts() {
+  const { data, error } = await supabase
+    .from('interesting_facts')
+    .select('*')
+    .order('id', { ascending: false });
+
+  if (error) {
+    console.error('흥미로운 사실 불러오기 오류:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function dbSaveInterestingFact(fact: any) {
+  const { data, error } = await supabase.from('interesting_facts').insert([
+    {
+      subject: fact.subject,
+      title: fact.title,
+      subtitle: fact.subtitle || null,
+      category: fact.category,
+      content: fact.content,
+      poster_image: fact.posterImage || null,
+      author_name: fact.authorName || '선생님 공식 포스터',
+      tags: fact.tags || [],
+      likes: 0,
+      liked_user_ids: [],
+      bg_gradient: fact.bgGradient || null,
+    },
+  ]).select();
+
+  if (error) {
+    console.error('흥미로운 사실 저장 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true, data };
+}
+
+export async function dbDeleteInterestingFact(factId: string) {
+  const { error } = await supabase
+    .from('interesting_facts')
+    .delete()
+    .eq('id', factId);
+
+  if (error) {
+    console.error('흥미로운 사실 삭제 오류:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+export async function dbToggleLikeInterestingFact(factId: string, userId: string, isLiked: boolean) {
+  const { data: current } = await supabase
+    .from('interesting_facts')
+    .select('likes, liked_user_ids')
+    .eq('id', factId)
+    .single();
+
+  const currentLikedIds: string[] = current?.liked_user_ids || [];
+  const newLikedIds = isLiked
+    ? currentLikedIds.filter((id) => id !== userId)
+    : [...currentLikedIds, userId];
+  const newLikes = Math.max(0, (current?.likes || 0) + (isLiked ? -1 : 1));
+
+  const { error } = await supabase
+    .from('interesting_facts')
+    .update({ likes: newLikes, liked_user_ids: newLikedIds })
+    .eq('id', factId);
 
   if (error) {
     console.error('좋아요 업데이트 오류:', error);

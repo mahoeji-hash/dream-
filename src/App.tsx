@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { TEXTBOOKS } from './data/mockTextbooks';
-import { getStoredInterestingFacts } from './data/mockInterestingFacts';
 import {
   ProblemItem,
   UserProfile,
@@ -12,15 +11,6 @@ import {
   QuizAttemptRecord,
 } from './types';
 import { getStoredAccounts } from './services/authService';
-import {
-  dbFetchTextbookProblems,
-  dbSaveTextbookProblem,
-  dbFetchCommunityQuestions,
-  dbSaveCommunityQuestion,
-  dbAnswerCommunityQuestion,
-  dbDeleteCommunityQuestion,
-  dbToggleLikeCommunityQuestion,
-} from './services/dbService';
 import { HomeScreen } from './components/HomeScreen';
 import { TextbookMasterView } from './components/TextbookMasterView';
 import { ProblemDetailModal } from './components/ProblemDetailModal';
@@ -42,6 +32,24 @@ const DEFAULT_PROFILE: UserProfile = {
   quizAttempts: [],
   wrongQuizQuestions: [],
 };
+
+function mapDbRowToInterestingFact(row: any): InterestingFactItem {
+  return {
+    id: String(row.id),
+    subject: row.subject,
+    title: row.title,
+    subtitle: row.subtitle || undefined,
+    category: row.category,
+    content: row.content,
+    posterImage: row.poster_image || undefined,
+    authorName: row.author_name || '선생님',
+    createdAt: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : '',
+    tags: row.tags || [],
+    likes: row.likes || 0,
+    likedUserIds: row.liked_user_ids || [],
+    bgGradient: row.bg_gradient || undefined,
+  };
+}
 
 // DB row(snake_case) -> ProblemItem(camelCase) 변환
 function mapDbRowToProblemItem(row: any): ProblemItem {
@@ -146,14 +154,14 @@ export default function App() {
   useEffect(() => {
   async function fetchAllData() {
     try {
-      const [problemRows, qnaRows, factsData] = await Promise.all([
+      const [problemRows, qnaRows, factRows] = await Promise.all([
         dbFetchTextbookProblems(),
         dbFetchCommunityQuestions(),
-        Promise.resolve(getStoredInterestingFacts()),
+        dbFetchInterestingFacts(),
       ]);
       setProblems(problemRows.map(mapDbRowToProblemItem));
       setCommunityQuestions(qnaRows.map(mapDbRowToCommunityQuestion));
-      setInterestingFacts(Array.isArray(factsData) ? factsData : []);
+      setInterestingFacts(factRows.map(mapDbRowToInterestingFact));
     } catch (error) {
       console.error('데이터 로드 실패:', error);
     }
@@ -257,36 +265,49 @@ export default function App() {
   };
 
   // 흥미로운 사실 (로컬)
-  const handleAddNewFact = (newFact: InterestingFactItem) => {
-    setInterestingFacts((prev) => [newFact, ...prev]);
-  };
+  const handleAddNewFact = async (newFact: InterestingFactItem) => {
+  const res = await dbSaveInterestingFact(newFact);
+  if (res.success) {
+    const rows = await dbFetchInterestingFacts();
+    setInterestingFacts(rows.map(mapDbRowToInterestingFact));
+  } else {
+    alert(`포스터 저장 실패: ${res.error}`);
+  }
+};
 
-  const handleDeleteFact = (factId: string) => {
+const handleDeleteFact = async (factId: string) => {
+  const res = await dbDeleteInterestingFact(factId);
+  if (res.success) {
     setInterestingFacts((prev) => prev.filter((f) => f.id !== factId));
-  };
+  }
+};
 
-  const handleToggleLikeFact = (factId: string) => {
-    const activeUserId = userProfile.id || userProfile.loginId || 'user_account_default';
-    setInterestingFacts((prev) =>
-      prev.map((f) => {
-        if (f.id !== factId) return f;
-        const currentLikedUsers = Array.isArray(f.likedUserIds) ? f.likedUserIds : [];
-        const isAlreadyLiked = currentLikedUsers.includes(activeUserId);
-        if (isAlreadyLiked) {
-          return {
-            ...f,
-            likes: Math.max(0, (f.likes || 1) - 1),
-            likedUserIds: currentLikedUsers.filter((uid) => uid !== activeUserId),
-          };
-        }
+const handleToggleLikeFact = async (factId: string) => {
+  const activeUserId = userProfile.id || userProfile.loginId || 'user_account_default';
+  const fact = interestingFacts.find((f) => f.id === factId);
+  const isLiked = !!(fact?.likedUserIds?.includes(activeUserId));
+
+  setInterestingFacts((prev) =>
+    prev.map((f) => {
+      if (f.id !== factId) return f;
+      const currentLikedUsers = Array.isArray(f.likedUserIds) ? f.likedUserIds : [];
+      if (isLiked) {
         return {
           ...f,
-          likes: (f.likes || 0) + 1,
-          likedUserIds: [...currentLikedUsers, activeUserId],
+          likes: Math.max(0, (f.likes || 1) - 1),
+          likedUserIds: currentLikedUsers.filter((uid) => uid !== activeUserId),
         };
-      })
-    );
-  };
+      }
+      return {
+        ...f,
+        likes: (f.likes || 0) + 1,
+        likedUserIds: [...currentLikedUsers, activeUserId],
+      };
+    })
+  );
+
+  await dbToggleLikeInterestingFact(factId, activeUserId, isLiked);
+};
 
   // 커뮤니티 Q&A (Supabase)
   const handleAddCommunityQuestion = async (newQ: any) => {
