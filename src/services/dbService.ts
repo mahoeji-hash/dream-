@@ -4,7 +4,6 @@ import { supabase } from '../supabaseClient';
 // 1. 교과서 문제 (Textbook Problems) DB 연동
 // ==========================================
 
-// 교과서 문제 DB 저장
 export async function dbSaveTextbookProblem(problem: any) {
   const { data, error } = await supabase.from('textbook_problems').insert([
     {
@@ -38,7 +37,6 @@ export async function dbSaveTextbookProblem(problem: any) {
   return { success: true, data };
 }
 
-// 교과서 문제 DB 불러오기
 export async function dbFetchTextbookProblems() {
   const { data, error } = await supabase
     .from('textbook_problems')
@@ -56,7 +54,6 @@ export async function dbFetchTextbookProblems() {
 // 2. Q&A 게시판 (QnA Questions) DB 연동
 // ==========================================
 
-// Q&A 질문 DB 저장
 export async function dbSaveQnaQuestion(qna: {
   userName: string;
   title: string;
@@ -82,7 +79,6 @@ export async function dbSaveQnaQuestion(qna: {
   return { success: true, data };
 }
 
-// Q&A 질문 목록 DB 불러오기
 export async function dbFetchQnaQuestions() {
   const { data, error } = await supabase
     .from('qna_questions')
@@ -96,7 +92,6 @@ export async function dbFetchQnaQuestions() {
   return data || [];
 }
 
-// Q&A 답변 DB 업데이트
 export async function dbUpdateQnaAnswer(id: number, answerContent: string) {
   const { data, error } = await supabase
     .from('qna_questions')
@@ -118,7 +113,6 @@ export async function dbUpdateQnaAnswer(id: number, answerContent: string) {
 // 3. 포스터 / 게시글 (Posters) DB 연동
 // ==========================================
 
-// 포스터 DB 저장
 export async function dbSavePoster(poster: {
   title: string;
   content: string;
@@ -143,7 +137,6 @@ export async function dbSavePoster(poster: {
   return { success: true, data };
 }
 
-// 포스터 목록 DB 불러오기
 export async function dbFetchPosters() {
   const { data, error } = await supabase
     .from('posters')
@@ -161,7 +154,6 @@ export async function dbFetchPosters() {
 // 4. 단원평가 문제 (Test Questions) DB 연동
 // ==========================================
 
-// 단원평가 문제 DB 저장
 export async function dbSaveTestQuestion(test: {
   subject: string;
   unitCode: string;
@@ -188,7 +180,6 @@ export async function dbSaveTestQuestion(test: {
   return { success: true, data };
 }
 
-// 단원평가 문제 DB 불러오기
 export async function dbFetchTestQuestions() {
   const { data, error } = await supabase
     .from('test_questions')
@@ -227,7 +218,6 @@ export interface TextbookQuestionInput {
   teacherTip?: string;
 }
 
-// 교과서 문제 DB 저장
 export async function dbSaveTextbookQuestion(item: TextbookQuestionInput) {
   const { data, error } = await supabase.from('textbook_questions').insert([
     {
@@ -254,7 +244,6 @@ export async function dbSaveTextbookQuestion(item: TextbookQuestionInput) {
   return { success: true, data };
 }
 
-// 전체 교과서 문제 불러오기
 export async function dbFetchTextbookQuestions() {
   const { data, error } = await supabase
     .from('textbook_questions')
@@ -268,7 +257,6 @@ export async function dbFetchTextbookQuestions() {
   return data || [];
 }
 
-// 과목 및 단원별 교과서 문제 조회
 export async function dbFetchTextbookQuestionsByUnit(subject?: string, unitCode?: string) {
   let query = supabase.from('textbook_questions').select('*');
 
@@ -288,7 +276,6 @@ export async function dbFetchTextbookQuestionsByUnit(subject?: string, unitCode?
   return data || [];
 }
 
-// 교과서 문제 삭제
 export async function dbDeleteTextbookQuestion(id: number | string) {
   const { error } = await supabase
     .from('textbook_questions')
@@ -306,7 +293,6 @@ export async function dbDeleteTextbookQuestion(id: number | string) {
 // 6. 커뮤니티 질문 (Community Questions) DB 연동
 // ==========================================
 
-// 커뮤니티 질문 DB 저장
 export async function dbSaveCommunityQuestion(question: any) {
   const { data, error } = await supabase.from('community_questions').insert([
     {
@@ -325,7 +311,6 @@ export async function dbSaveCommunityQuestion(question: any) {
   return { success: true, data };
 }
 
-// 커뮤니티 질문 목록 DB 불러오기
 export async function dbFetchCommunityQuestions() {
   const { data, error } = await supabase
     .from('community_questions')
