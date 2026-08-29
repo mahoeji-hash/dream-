@@ -839,4 +839,4 @@ export const DrawScratchpad: React.FC<DrawScratchpadProps> = ({
     </div>
   );
 };
-export default DrawScratchphad;
+export default DrawScratchpad;
